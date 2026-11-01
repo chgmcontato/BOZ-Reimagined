@@ -394,14 +394,22 @@ void config_load_image(const uint8_t *data, uint32_t size) {
     config_set("ONLINE", "dispatcher", "");
     config_set("FLASH", "FlashBucketSize", "32000000");
     config_set("FLASH", "FlashBucketHeapAnalyse", "0");
-    if (g_obb_path[0] || asset_exists("blackops_etc.dz")) {
-        config_set("RESMANAGER", "ResBuildStyle", "etc");
-    } else if (asset_exists("blackops_dxt.dz")) {
-        config_set("RESMANAGER", "ResBuildStyle", "dxt");
+    /* The archive's name says which texture build it holds (Android OBB: etc; iOS: gles1). */
+    const char *style;
+    if (g_obb_path[0]) {
+        const char *name = strrchr(g_obb_path, '/');
+        name = name ? name + 1 : g_obb_path;
+        style = strstr(name, "gles1") ? "gles1" : strstr(name, "dxt") ? "dxt" : "etc";
     } else {
-        config_set("RESMANAGER", "ResBuildStyle", "gles1");
+        style = asset_exists("blackops_etc.dz")   ? "etc"
+                : asset_exists("blackops_dxt.dz") ? "dxt"
+                                                  : "gles1";
     }
+    config_set("RESMANAGER", "ResBuildStyle", style);
+    g_pvrtc_textures = strcmp(style, "gles1") == 0;
 }
+
+bool g_pvrtc_textures;
 
 IMPORT(s3eConfigGetInt) {
     const char *value = config_get(G2H(arg(0)), G2H(arg(1)));

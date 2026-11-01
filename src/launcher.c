@@ -81,7 +81,9 @@ static void load_cfg(void) {
         if (strncmp(line, "obb=", 4) == 0) {
             snprintf(g_obb, sizeof(g_obb), "%s", line + 4);
         } else if (strncmp(line, "mode=", 5) == 0) {
-            g_mode = strcmp(line + 5, "reimagined") == 0 ? MODE_REIMAGINED : MODE_ORIGINAL;
+            g_mode = strcmp(line + 5, "reimagined") == 0 ? MODE_REIMAGINED
+                     : strcmp(line + 5, "ios") == 0      ? MODE_IOS
+                                                         : MODE_ORIGINAL;
         }
     }
     fclose(f);
@@ -92,7 +94,7 @@ static void save_cfg(void) {
     cfg_path(path, sizeof(path), "launcher.cfg");
     FILE *f = fopen(path, "w");
     if (f) {
-        fprintf(f, "obb=%s\nmode=%s\n", g_obb, g_mode == MODE_REIMAGINED ? "reimagined" : "original");
+        fprintf(f, "obb=%s\nmode=%s\n", g_obb, mode_dir_name(g_mode));
         fclose(f);
     }
 }
@@ -116,11 +118,16 @@ static bool obb_ok(void) {
     return f != NULL;
 }
 
+/* The iOS mode carries its own data archive (installed from the IPA); the others need the OBB. */
+static bool data_ok(void) {
+    return g_mode == MODE_IOS || obb_ok();
+}
+
 bool launcher_saved_choice(enum game_mode *mode, char *obb, size_t obb_size) {
     load_cfg();
     *mode = g_mode;
     snprintf(obb, obb_size, "%s", g_obb);
-    return obb_ok() && install_present(g_data_root, g_mode);
+    return data_ok() && install_present(g_data_root, g_mode);
 }
 
 /* Native "open file" dialog; returns false when cancelled. */
@@ -374,15 +381,17 @@ static void draw_rail(void) {
 
 static void install_from_apk(void) {
     char apk[1024];
-    if (!pick_file(TR("Selecione o APK (original ou BOZ-TV.apk)", "Choose the APK (original or BOZ-TV.apk)"), "*.apk", apk, sizeof(apk))) {
+    if (!pick_file(TR("Selecione o APK (original ou BOZ-TV.apk) ou o IPA do iOS", "Choose the APK (original or BOZ-TV.apk) or the iOS IPA"), "*.apk *.ipa", apk, sizeof(apk))) {
         return;
     }
     enum game_mode mode;
     char error[256];
-    if (install_apk(apk, g_data_root, &mode, error, sizeof(error))) {
+    message(false, TR("Instalando...", "Installing..."));
+    if (install_package(apk, g_data_root, &mode, error, sizeof(error))) {
         g_mode = mode;
         save_cfg();
         message(false, mode == MODE_REIMAGINED ? TR("Modo Reimagined instalado.", "Reimagined mode installed.")
+                       : mode == MODE_IOS      ? TR("Modo iOS instalado (versão 1.3.5).", "iOS mode installed (version 1.3.5).")
                                                : TR("Modo Original instalado.", "Original mode installed."));
     } else {
         message(true, error);
@@ -413,14 +422,15 @@ static void draw_play(void) {
     float x = RAIL_W + 40;
     bool installed = install_present(g_data_root, g_mode);
     ui_font(UI_FONT_DISPLAY);
-    ui_label(installed && obb_ok() ? TR("Pronto para jogar", "Ready to play") : TR("Vamos preparar o jogo", "Let's set up the game"), x, 72, 30,
+    ui_label(installed && data_ok() ? TR("Pronto para jogar", "Ready to play") : TR("Vamos preparar o jogo", "Let's set up the game"), x, 72, 30,
              C_SNOW, UI_LEFT);
     label(g_mode == MODE_REIMAGINED ? TR("Reimagined  ·  versão da TV  ·  co-op com a TV", "Reimagined  ·  TV version  ·  co-op with the TV")
+          : g_mode == MODE_IOS      ? TR("iOS  ·  versão 1.3.5 do iPhone  ·  dados do próprio IPA", "iOS  ·  iPhone version 1.3.5  ·  data from the IPA itself")
                                     : TR("Original  ·  versão do celular  ·  co-op com o celular", "Original  ·  phone version  ·  co-op with phones"),
           x, 98, 13, C_SAND, UI_LEFT);
 
-    static const char *const modes[] = {"Original", "Reimagined"};
-    int mode = segmented(x, 122, 300, 38, modes, 2, (int)g_mode);
+    static const char *const modes[] = {"Original", "Reimagined", "iOS"};
+    int mode = segmented(x, 122, 420, 38, modes, 3, (int)g_mode);
     if (mode != (int)g_mode) {
         g_mode = (enum game_mode)mode;
         save_cfg();
@@ -428,17 +438,34 @@ static void draw_play(void) {
     }
     label(g_mode == MODE_REIMAGINED
               ? TR("Ritmo de horda e drops do BO1, HUD da TV, timer da partida e perfil.", "BO1 horde pace and drops, the TV HUD, match timer and profile.")
+          : g_mode == MODE_IOS
+              ? TR("A versão do iPhone (1.3.5), sem mudanças. Co-op só com quem tem a mesma versão.", "The iPhone version (1.3.5), unchanged. Co-op only with the same version.")
               : TR("O jogo do celular sem mudanças, para jogar com quem tem o original.", "The phone game unchanged, to play with people who have the original."),
           x, 184, 13, C_DIM, UI_LEFT);
 
     ui_rect(x, 204, REF_W - RAIL_W - 80, 1, C_LINE);
     char detail[256];
     snprintf(detail, sizeof(detail), "%s",
-             installed ? (g_mode == MODE_REIMAGINED ? TR("BOZ-TV.apk instalado", "BOZ-TV.apk installed") : TR("APK 1.0.11 instalado", "APK 1.0.11 installed"))
+             installed ? (g_mode == MODE_REIMAGINED ? TR("BOZ-TV.apk instalado", "BOZ-TV.apk installed")
+                          : g_mode == MODE_IOS      ? TR("IPA 1.3.5 instalado", "IPA 1.3.5 installed")
+                                                    : TR("APK 1.0.11 instalado", "APK 1.0.11 installed"))
                        : (g_mode == MODE_REIMAGINED ? TR("Instale com o BOZ-TV.apk", "Install with BOZ-TV.apk")
+                          : g_mode == MODE_IOS      ? TR("Instale com o IPA do iOS", "Install with the iOS IPA")
                                                     : TR("Instale com o APK do Android 1.0.11", "Install with the Android 1.0.11 APK")));
-    status_row(205, installed, TR("Jogo", "Game"), detail, installed ? TR("Reinstalar", "Reinstall") : TR("Instalar APK", "Install APK"),
+    status_row(205, installed, TR("Jogo", "Game"), detail, installed ? TR("Reinstalar", "Reinstall")
+                                                       : g_mode == MODE_IOS ? TR("Instalar IPA", "Install IPA") : TR("Instalar APK", "Install APK"),
                install_from_apk);
+    if (g_mode == MODE_IOS) {
+        icon(installed ? ICON_CHECK : ICON_ALERT, RAIL_W + 40, 268, 18, installed ? C_OK : C_GOLD);
+        label(TR("Dados do jogo", "Game data"), RAIL_W + 70, 280, 15, C_SNOW, UI_LEFT);
+        label(installed ? TR("blackops_gles1.dz, copiado do IPA", "blackops_gles1.dz, copied from the IPA")
+                        : TR("Vem junto com o IPA (não precisa de OBB)", "Comes with the IPA (no OBB needed)"),
+              RAIL_W + 70, 298, 12, C_DIM, UI_LEFT);
+        ui_rect(RAIL_W + 40, 310, REF_W - RAIL_W - 80, 1, C_LINE);
+        label(TR("No jogo, o cursor aparece sozinho nos menus. Esc pausa e libera o cursor. F11: tela cheia.", "In game the cursor shows by itself in menus. Esc pauses and frees the cursor. F11: fullscreen."), x, 350, 13,
+              C_DIM, UI_LEFT);
+        return;
+    }
     const char *base = strrchr(g_obb, '/');
     snprintf(detail, sizeof(detail), "%s",
              obb_ok() ? (base ? base + 1 : g_obb) : TR("Arquivo blackops_etc.dz (não é copiado)", "The blackops_etc.dz file (it is not copied)"));
@@ -583,20 +610,23 @@ static void draw_footer(void) {
     ui_rect(RAIL_W, y, REF_W - RAIL_W, FOOT_H, C_GROUND);
     ui_rect(RAIL_W, y, REF_W - RAIL_W, 1, C_LINE);
     bool installed = install_present(g_data_root, g_mode);
-    const char *primary = !installed ? TR("Instalar APK", "Install APK") : !obb_ok() ? TR("Selecionar OBB", "Choose OBB") : TR("JOGAR", "PLAY");
+    const char *primary = !installed ? (g_mode == MODE_IOS ? TR("Instalar IPA", "Install IPA") : TR("Instalar APK", "Install APK"))
+                          : !data_ok() ? TR("Selecionar OBB", "Choose OBB") : TR("JOGAR", "PLAY");
     if (g_message[0]) {
         icon(g_message_bad ? ICON_ALERT : ICON_CHECK, RAIL_W + 24, y + 23, 16,
              g_message_bad ? C_BAD : C_OK);
         label(g_message, RAIL_W + 48, y + 37, 13, g_message_bad ? C_BAD : C_SAND, UI_LEFT);
     } else {
-        label(g_mode == MODE_REIMAGINED ? TR("Modo Reimagined", "Reimagined mode") : TR("Modo Original", "Original mode"), RAIL_W + 24, y + 37,
+        label(g_mode == MODE_REIMAGINED ? TR("Modo Reimagined", "Reimagined mode")
+              : g_mode == MODE_IOS      ? TR("Modo iOS", "iOS mode")
+                                        : TR("Modo Original", "Original mode"), RAIL_W + 24, y + 37,
               13, C_DIM, UI_LEFT);
     }
     if (button(REF_W - 24 - 170, y + 12, 170, 40, primary, true, true)) {
         stop_editing();
         if (!installed) {
             install_from_apk();
-        } else if (!obb_ok()) {
+        } else if (!data_ok()) {
             choose_obb();
         } else {
             g_page = PAGE_START;
@@ -671,7 +701,7 @@ static void handle(const SDL_Event *ev) {
         } else if (b == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) {
             g_page = (enum page)((g_page + 1) % PAGE_COUNT);
         } else if (b == SDL_CONTROLLER_BUTTON_START && install_present(g_data_root, g_mode) &&
-                   obb_ok()) {
+                   data_ok()) {
             g_page = PAGE_START;
         }
         break;
