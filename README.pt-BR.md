@@ -1,0 +1,243 @@
+<div align="center">
+
+# 🧟 BOZ Reimagined
+
+**Call of Duty: Black Ops Zombies (2012), refeito para telas grandes e controle.**<br>
+Jogue no **PC (Linux e Windows)** ou na **Android TV**, juntos no co-op, a partir da sua própria cópia do jogo.
+
+[![Release](https://img.shields.io/github/v/release/chgmcontato/boz-reimagined?style=for-the-badge&color=b91c1c)](https://github.com/chgmcontato/boz-reimagined/releases/latest)
+[![Platforms](https://img.shields.io/badge/plataformas-Linux%20%7C%20Windows%20%7C%20Android%20TV-1f2937?style=for-the-badge)](#-guia-rápido)
+[![Language](https://img.shields.io/github/languages/top/chgmcontato/boz-reimagined?style=for-the-badge&color=f5c518)](https://github.com/chgmcontato/boz-reimagined)
+[![Status](https://img.shields.io/badge/status-ativo-15803d?style=for-the-badge)](https://github.com/chgmcontato/boz-reimagined/commits/main)
+[![License](https://img.shields.io/github/license/chgmcontato/boz-reimagined?style=for-the-badge&color=6b7280)](LICENSE)
+
+[English](README.md) · **Português**
+
+<br>
+
+<!-- Substitua este texto pelo link do vídeo/GIF de apresentação: ![BOZ Reimagined](URL_OU_PATH_DO_GIF) -->
+<img src="tv/screenshots/01-titulo.png" alt="Tela de título do BOZ Reimagined" width="85%">
+
+<sub>Nenhum dado do jogo vem aqui. Você precisa do seu APK + OBB (Android 1.0.11) ou do seu IPA (iOS 1.3.5).</sub>
+
+</div>
+
+---
+
+## ✨ Recursos
+
+| | |
+|---|---|
+| 🖥️ **Port para PC** | Roda o código ARM original do jogo no **JIT Dynarmic**: 60 fps com vsync, mais de 200 sem |
+| 📺 **Android TV** | APK modificado, jogado inteiro no controle, sem HUD de toque |
+| 🤝 **Co-op entre plataformas** | PC e TV entram no mesmo lobby de Local Wi-Fi (também pelo ZeroTier) |
+| 🎮 **Controles de console** | Layout no padrão Xbox, inspirado no Black Ops dos consoles, totalmente remapeável no PC |
+| 🎨 **Menus Reimagined** | Todas as telas redesenhadas em estilo quadrinhos, pause com dados da partida, timer |
+| ⏸️ **Pausa inteligente no co-op** | A partida congela quando um jogador cai e volta quando ele retorna |
+| 🍎 **Modo iOS (PC)** | Instala direto o IPA 1.3.5, com as texturas PVRTC decodificadas na hora |
+| 📦 **Sua cópia, seus arquivos** | Instala a partir do seu APK/IPA; o OBB é lido no lugar e nunca copiado |
+
+---
+
+## 📸 Screenshots
+
+### PC
+
+| Launcher | Menu principal |
+| :---: | :---: |
+| <img src="docs/screenshots/pc/launcher.jpg" width="100%"> | <img src="docs/screenshots/pc/main-menu.jpg" width="100%"> |
+| **Seleção de personagem e mapa** | **Gameplay · Call of the Dead** |
+| <img src="docs/screenshots/pc/character-select.jpg" width="100%"> | <img src="docs/screenshots/pc/gameplay.jpg" width="100%"> |
+| **Lobby co-op (PC + TV)** | **Cartão de pausa no co-op** |
+| <img src="docs/screenshots/pc/coop-lobby.jpg" width="100%"> | <img src="docs/screenshots/pc/coop-pause.jpg" width="100%"> |
+
+### Android TV
+
+| Pause · Kino der Toten | Pause · Call of the Dead |
+| :---: | :---: |
+| <img src="tv/screenshots/02-pause-kino.png" width="100%"> | <img src="tv/screenshots/03-pause-cotd.png" width="100%"> |
+| **HUD do Dead Ops Arcade** | **Player Profile** |
+| <img src="tv/screenshots/04-deadops-hud.png" width="100%"> | <img src="tv/screenshots/05-player-profile.png" width="100%"> |
+
+<details>
+<summary><b>Modo iOS</b></summary>
+<br>
+
+| Menu principal do iOS 1.3.5, no PC |
+| :---: |
+| <img src="docs/screenshots/pc/ios-menu.jpg" width="70%"> |
+
+</details>
+
+---
+
+## 🛠️ Tecnologias
+
+<div align="center">
+
+![C](https://img.shields.io/badge/C11-00599C?style=flat-square&logo=c&logoColor=white)
+![C++](https://img.shields.io/badge/C++20-00599C?style=flat-square&logo=cplusplus&logoColor=white)
+![Java](https://img.shields.io/badge/Java-ED8B00?style=flat-square&logo=openjdk&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![SDL2](https://img.shields.io/badge/SDL2-1d4ed8?style=flat-square)
+![OpenGL](https://img.shields.io/badge/OpenGL-5586A4?style=flat-square&logo=opengl&logoColor=white)
+![Dynarmic](https://img.shields.io/badge/Dynarmic_JIT-374151?style=flat-square)
+![Android](https://img.shields.io/badge/Android_TV-3DDC84?style=flat-square&logo=android&logoColor=white)
+![MinGW](https://img.shields.io/badge/MinGW--w64-0078D6?style=flat-square&logo=windows&logoColor=white)
+
+</div>
+
+| Camada | O que faz |
+|---|---|
+| **PC** (`src/`) | Reimplementa o runtime s3e do Marmalade (EGL, OpenGL ES, áudio, sockets, ZeroConf) em SDL2 + OpenGL de desktop; o código ARM do jogo roda no Dynarmic |
+| **TV** (`tv/`) | Patches binários conferidos byte a byte sobre o APK original, mais uma camada Java para controle, menus, HUD e pause |
+| **Ferramentas** | Patchers em Python, scripts Frida e notas do Ghidra usados na engenharia reversa |
+
+---
+
+## 🚀 Guia rápido
+
+> **Requisito:** sua própria cópia do jogo. APK Android **1.0.11** + OBB `blackops_etc.dz`, ou (só no PC) o IPA iOS **1.3.5**. Os hashes estão em [`tv/README.pt-BR.md`](tv/README.pt-BR.md).
+
+### 🖥️ PC: versão pronta
+
+1. Baixe em [**Releases**](https://github.com/chgmcontato/boz-reimagined/releases/latest):
+   - **Windows 10/11:** `codboz-pc-windows-x64.zip` (um `.exe`, sem DLLs extras)
+   - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (precisa do SDL2 e da glibc 2.39+)
+2. Abra. No launcher: **Install APK** (ou **Install IPA**) → **Choose** (Game data, o OBB) → **PLAY**. O launcher abre em inglês; troque para português em **Settings**.
+
+```bash
+# Linux
+sudo apt install libsdl2-2.0-0
+tar xzf codboz-pc-linux-x86_64.tar.gz && ./codboz-pc/codboz-pc
+```
+
+Dados e saves ficam na pasta `game/`, ao lado do executável.
+
+### 🖥️ PC: compilar o código
+
+```bash
+git clone --recursive https://github.com/chgmcontato/boz-reimagined.git
+cd boz-reimagined
+
+# Linux (precisa do SDL2 para desenvolvimento, CMake e headers do Boost)
+make CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/caminho/do/boost/include
+./run.sh
+
+# .exe de Windows, compilado a partir do Linux com MinGW-w64
+make win-deps
+make PLATFORM=windows win-dist      # → build-win/codboz-pc-windows.zip
+```
+
+### 📺 Android TV
+
+```bash
+# precisa de adb e xdelta3; TV com ADB pela rede ativado
+bash tv/instalar.sh <IP-da-TV> base.apk blackops_etc.dz boz-reimagined-tv-v0.2.xdelta
+```
+
+O patch só funciona sobre o APK original. Guia completo, incluindo co-op pelo ZeroTier, em [`tv/README.pt-BR.md`](tv/README.pt-BR.md).
+
+---
+
+## 📚 Notas técnicas (PC)
+
+<details>
+<summary><b>Modos de jogo: Original, Reimagined, iOS</b></summary>
+<br>
+
+| | Original | Reimagined | iOS |
+|---|---|---|---|
+| Instala a partir de | APK Android 1.0.11 | APK Reimagined da TV | IPA iOS 1.3.5 |
+| `boz.s3e` | intocado | o mesmo da TV, byte a byte | decodificado do IPA |
+| Co-op com | celulares com o original | TVs e PCs com o Reimagined | a mesma versão do iOS |
+| Ondas / drops | regras do celular | ritmo de horda do BO1, ciclo de drops do BO1, regras de Death Machine/DG-2 | regras do celular |
+| HUD | HUD do celular sem botões de toque | HUD da TV: contadores de granada, timer, contador de FPS | HUD do celular |
+
+O co-op exige o **mesmo modo nos dois lados**: o Reimagined muda regras que host e cliente simulam
+juntos. O PC não acrescenta nada ao protocolo de rede. No iOS, o instalador tira a imagem do jogo
+do executável armv7 e decodifica a parte de dados embaralhada (a chave sai das próprias
+relocações da imagem).
+
+</details>
+
+<details>
+<summary><b>Controles</b></summary>
+<br>
+
+Remapeie tudo no launcher (**Controls**) ou no `bindings.txt`. Padrão:
+
+| Ação | Teclado / mouse | Controle (layout do BO1) |
+|---|---|---|
+| Andar / olhar | WASD / mouse | analógicos |
+| Atirar / mirar (segurar) | botão esquerdo / direito | RT / LT |
+| Usar, comprar, correr | E, Shift, Espaço | A |
+| Recarregar | R | X |
+| Trocar de arma | 1, roda | Y |
+| Agachar | C, Ctrl | B |
+| Faca | V, botão do meio | RS |
+| Granada / tática / claymore | G / Q / 4 | RB / LB / direcional para a direita |
+| Pause | Esc | Start |
+
+O mouse vira cursor em todo menu reconhecido e câmera no gameplay; a troca é automática. Na tela
+de pause, T liga e desliga o timer. F11: tela cheia. F3: contador de FPS.
+
+</details>
+
+<details>
+<summary><b>Emulação da CPU, versão de Windows, depuração</b></summary>
+<br>
+
+- O código ARM do jogo roda no JIT Dynarmic A32 (`third_party/dynarmic`). Call of the Dead sem
+  vsync roda a cerca de 211 fps num notebook com Radeon 610M. O backend Unicorn anterior está na
+  tag `last-unicorn`; detalhes em `tools/dynarmic_probe/README.md`.
+- `CODBOZ_DYN_FASTMEM=1` é ainda mais rápido, mas deixa o jogo alcançar qualquer memória baixa do
+  host; `CODBOZ_DYN_CODE_WATCH=1` verifica código auto-modificável (nenhum encontrado).
+- O Windows é compilado com MinGW-w64 (`brew install mingw-w64`). Lá o heap do jogo tem 764 MB em
+  vez de 1 GB (o Windows reserva uma página em 0x7ffe0000); uma partida usa cerca de 155 MB.
+- `CODBOZ_PERF=1` registra uma linha de desempenho por segundo; `CODBOZ_SCRIPT` controla o jogo por
+  script (usado nos prints acima); `CODBOZ_PREVIEW_COOP_PAUSE=1` mostra o cartão de pausa do co-op.
+
+</details>
+
+<details>
+<summary><b>Problemas conhecidos</b></summary>
+<br>
+
+- Windows: testado no Wine (menus, uma partida de Call of the Dead, 60 fps); ainda não em Windows de verdade, co-op não testado lá.
+- Save & Quit → Continue não restaura o timer da partida.
+- Modo iOS: o primeiro clique depois da tela de título é ignorado (clique de novo); `s3eInetPton` ainda é um stub.
+
+</details>
+
+<details>
+<summary><b>Estrutura do repositório</b></summary>
+<br>
+
+| Caminho | Conteúdo |
+|---|---|
+| `src/`, `Makefile`, `run.sh` | Port para PC. `make` gera `build/codboz-pc`; `make clean` preserva `build/game` (dados instalados e saves) |
+| `tv/` | Projeto da Android TV: patchers, camada Java (`tv/java`), instalador, ferramentas de mapas, docs |
+| `third_party/` | Dynarmic (submódulo), cJSON, LZMA SDK, dr_mp3, stb (cada um com sua licença) |
+| `tools/` | testes, o probe do Dynarmic, geradores de código |
+| `docs/screenshots/` | imagens usadas neste README |
+
+</details>
+
+---
+
+## 🤝 Como contribuir
+
+Relatos de bugs e ideias são bem-vindos:
+
+- 🐛 **Achou um bug?** [Abra uma issue](https://github.com/chgmcontato/boz-reimagined/issues) com a **plataforma**, o **mapa**, a **rodada** e um **print**.
+- 🔧 **Quer programar?** Faça um fork, crie uma branch a partir do `main` e abra um pull request com uma descrição curta e como você testou.
+- ⚠️ Nunca envie arquivos do jogo (APK, OBB, IPA, `.s3e`, assets extraídos).
+
+---
+
+## 📄 Licença
+
+Código distribuído sob a [Licença MIT](LICENSE).
+
+<sub>O BOZ Reimagined é um projeto de fã, sem ligação com a Activision ou a Treyarch e sem endosso delas. *Call of Duty* e *Black Ops* são marcas registradas da Activision Publishing, Inc. Este repositório não contém código nem assets do jogo.</sub>

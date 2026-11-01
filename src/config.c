@@ -28,6 +28,7 @@ struct host_options g_opt = {
     .mouse_sensitivity = 1.0f,
     .invert_y = false,
     .mouse_drag = false,
+    .english = true, /* launcher language; Portuguese is one click away */
 };
 
 static char *trim(char *text) {
