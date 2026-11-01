@@ -37,3 +37,33 @@ O upstream `merryhime/dynarmic` saiu do GitHub. Fork usado: `azahar-emu/dynarmic
 ## Protótipo
 `probe.cpp` carrega o `boz.s3e` com o `loader.c` real, executa o entry no JIT e para no N-ésimo
 import (cada um responde r0=0). Build: ver o cabeçalho de `CMakeLists.txt`.
+
+## Backend completo: `src/emu_dynarmic.cpp` (2026-11-01)
+
+`make EMU=dynarmic CC=gcc CXX=g++` gera `build-dynarmic/codboz-pc` (o Unicorn segue padrão em
+`build/codboz-pc`). Rodar com `build-dynarmic/codboz-pc --data build/game`.
+Dynarmic é submódulo em `third_party/dynarmic` (azahar-emu, a466015). Precisa de headers do Boost
+(`BOOST_INCLUDE_DIR=...`).
+
+Decisões:
+- `guest_call` aninhado: um `Jit` por nível (até 16), porque `Jit::Run` não é reentrante. O
+  estado do chamador fica intacto no Jit dele; nada a salvar/restaurar.
+- `ExclusiveMonitor` de 1 processador (obrigatório para `ldrex/strex` no x64 backend).
+- Page table identidade (padrão); `CODBOZ_DYN_FASTMEM=1` liga fastmem com base 0.
+- Retorno ao host: `svc #0xffffff` em `GUEST_RETURN_MAGIC` → `HaltExecution`.
+
+Benchmark (Ascension, rodada 1, mesma rota `CODBOZ_SCRIPT`, ~44 s de gameplay, Radeon 610M,
+amostras de 1 s só com `active=1 state=gameplay`, emu ponderado por frame):
+
+| Backend | vsync | FPS médio | emu ms/frame |
+|---|---|---:|---:|
+| Unicorn 2.1.4 (TCG 2 GiB) | on | 27.9 | 35.1 |
+| Dynarmic (page table) | on | 59.3 (teto do vsync) | 5.7 |
+| Unicorn 2.1.4 | off | 28.3 | 34.7 |
+| Dynarmic (page table) | off | 175.8 | 4.7 |
+| Dynarmic (fastmem) | off | 203.4 | 4.0 |
+
+Pendências: auto-modificação de código em runtime não é detectada (o Unicorn detecta); só os
+patches feitos antes do `emu_run` estão cobertos. Testar COTD e co-op; checar a única diferença
+vista (uma corrida com vsync terminou em game over antes do Esc, coerente com o jogo a 60 fps em
+vez de 28, mas não confirmado).
