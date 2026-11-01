@@ -109,7 +109,6 @@ static int patch_xperia_binds(uint8_t **data, uint32_t *size) {
     uint32_t count;
     memcpy(&count, a + 13, 4);
     if (!reload || !alt || !next || count != 11 || reload[-16] != 0x7e || alt[-15] != 0x09) {
-        log_info("unexpected Xperia binding table; controls left unchanged");
         return 0;
     }
     reload[-16] = 0x09;
@@ -141,6 +140,44 @@ static int patch_xperia_binds(uint8_t **data, uint32_t *size) {
     return 1;
 }
 
+/*
+ * The iOS build's Xperia table (version 1.3.5) uses other codes: reload 126, tactical grenade
+ * 204, crouch 205, alternateFire 206, changeWeapon 207. Move them to the codes the PC input sends
+ * for every mode (9, 10, 12, 15, 11); 126 would also hit the DeviceBack shortcut. Each byte is
+ * checked before it is changed, so an unknown table is left alone.
+ */
+static int patch_ios_binds(uint8_t *data, uint32_t size) {
+    uint8_t *end = data + size;
+    uint8_t *a = FIND(data, end, "XperiaPlayBO");
+    uint8_t *b = a ? FIND(a, end, "BOPlayerControlsWin") : NULL;
+    if (!a || !b) {
+        return 0;
+    }
+    static const struct {
+        const char *name; /* NUL-terminated in the table; case matters (reloadChangeWeapon) */
+        int back;         /* key byte position before the name */
+        uint8_t from, to;
+    } k_map[] = {
+        {"reloadChangeWeapon", 15, 126, 9},
+        {"+tacticalGrenade", 16, 204, 10},
+        {"+crouchProne", 16, 205, 12},
+        {"alternateFire", 15, 206, 15},
+        {"changeWeapon", 15, 207, 11},
+    };
+    uint8_t *found[5];
+    for (int i = 0; i < 5; ++i) {
+        uint8_t *p = find_bytes(a, b, k_map[i].name, strlen(k_map[i].name) + 1);
+        if (!p || p - a < k_map[i].back || p[-k_map[i].back] != k_map[i].from) {
+            return 0;
+        }
+        found[i] = p - k_map[i].back;
+    }
+    for (int i = 0; i < 5; ++i) {
+        *found[i] = k_map[i].to;
+    }
+    return 1;
+}
+
 /* patch_pickups_console.py: Call of the Dead leaves the normal lightning-bolt pool. */
 static int patch_lightning_pool(uint8_t *data, uint32_t *size) {
     static const char key[] = "LightningBoltLevels";
@@ -163,6 +200,17 @@ void codboz_pc_texts(const char *name, uint8_t *data, uint32_t size);
 void codboz_patch_archive_entry(const char *name, uint8_t **data, uint32_t *size) {
     const char *slash = strrchr(name ? name : "", '/');
     const char *base = slash ? slash + 1 : (name ? name : "");
+    const char *dump = getenv("CODBOZ_DUMP_ENTRY"); /* debug: save an archive entry as read */
+    if (dump && strcasecmp(base, dump) == 0) {
+        char path[1200];
+        snprintf(path, sizeof(path), "%s/%s", getenv("CODBOZ_SHOT_DIR") ? getenv("CODBOZ_SHOT_DIR") : ".", base);
+        FILE *f = fopen(path, "wb");
+        if (f) {
+            fwrite(*data, 1, *size, f);
+            fclose(f);
+            log_info("dumped %s (%u bytes) to %s", name, *size, path);
+        }
+    }
     codboz_hide_virtual_stick_artwork(name, *data, *size);
     codboz_pc_texts(name, *data, *size);
     if (strcasecmp(base, "console.bin") != 0 || !g_reimagined_binds) {
@@ -170,6 +218,11 @@ void codboz_patch_archive_entry(const char *name, uint8_t **data, uint32_t *size
     }
     if (patch_xperia_binds(data, size)) {
         log_info("%s: Xperia bindings updated (reload, aim, claymore)", name);
+    } else if (patch_ios_binds(*data, *size)) {
+        log_info("%s: iOS Xperia bindings moved to the PC codes (reload, tactical, crouch, switch)", name);
+    } else if (FIND(*data, *data + *size, "XperiaPlayBO") && !FIND(*data, *data + *size, "toggleFreeMode")) {
+        /* (a table that already has toggleFreeMode was patched upstream: nothing to do) */
+        log_info("%s: unexpected Xperia binding table; controls left unchanged", name);
     }
     if (patch_lightning_pool(*data, size)) {
         log_debug("%s: lightning bolt pool updated", name);
