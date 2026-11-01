@@ -17,7 +17,13 @@ enum {
     GUEST_THUNK_BASE = 0x45000000u,
     GUEST_THUNK_SIZE = 0x00010000u,
     GUEST_HEAP_BASE = 0x50000000u,
+#ifdef _WIN32
+    /* Windows always maps KUSER_SHARED_DATA at 0x7ffe0000 (and more just below it): stop short.
+     * A Call of the Dead match peaks around 155 MB of guest heap. */
+    GUEST_HEAP_SIZE = 0x2fc00000u,
+#else
     GUEST_HEAP_SIZE = 0x40000000u,
+#endif
 };
 
 /* Address the guest returns to when a host-initiated call finishes. */

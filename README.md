@@ -39,6 +39,18 @@ fps on a Radeon 610M laptop). `CODBOZ_DYN_FASTMEM=1` is faster still but lets th
 low host memory; `CODBOZ_DYN_CODE_WATCH=1` checks for self-modifying code (none found).
 Details: `tools/dynarmic_probe/README.md`.
 
+### Windows
+
+Cross-built on Linux with MinGW-w64 (`brew install mingw-w64`), Dynarmic only:
+
+```sh
+make win-deps                       # SDL2's MinGW package into build-win/deps
+make PLATFORM=windows win-dist      # build-win/codboz-pc-windows.zip (one .exe, SDL2 inside)
+```
+
+The .exe runs on Windows 10/11 with no extra DLLs. On Windows the guest heap is 764 MB instead of
+1 GB (the system keeps a page at 0x7ffe0000); a match uses about 155 MB.
+
 ### iOS IPA (version 1.3.5)
 
 Install `Call of Duty Black Ops Zombies` 1.3.5's IPA as a third mode, **iOS**. On iOS, Marmalade
@@ -94,7 +106,7 @@ F3: host FPS counter.
   name editor, controller focus brackets) are not redrawn yet: menus show the original Flash screens.
 - Save & Quit -> Continue does not restore the match timer.
 - Co-op discovery (ZeroConf) is implemented but untested against a phone or TV.
-- Windows build.
+- Windows: tested under Wine (menus, a Call of the Dead match, 60 fps); not yet on real Windows, co-op untested there.
 - iOS mode: `s3eInetPton` (iOS-only import) is still a stub; it was never called in testing.
 - The first click after the iOS title screen is swallowed by the game (click again).
 

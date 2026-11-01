@@ -15,7 +15,11 @@
 #include <dynarmic/interface/A32/coprocessor.h>
 #include <dynarmic/interface/exclusive_monitor.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/mman.h>
+#endif
 
 #include <array>
 #include <bitset>
@@ -34,7 +38,7 @@ extern "C" {
 uint64_t monotonic_us(void);
 }
 
-#ifndef MAP_FIXED_NOREPLACE
+#if !defined(_WIN32) && !defined(MAP_FIXED_NOREPLACE)
 #define MAP_FIXED_NOREPLACE 0x100000
 #endif
 
@@ -397,6 +401,23 @@ struct perf_counters g_perf;
 
 extern "C" bool emu_map_identity(uint32_t addr, uint32_t size) {
     size = (size + 0xfffu) & ~0xfffu;
+#ifdef _WIN32
+    // Data only: the JIT executes from its own code cache, never from guest memory.
+    void *p = VirtualAlloc(G2H(addr), size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (p != G2H(addr)) {
+        if (p) VirtualFree(p, 0, MEM_RELEASE);
+        log_error("unable to reserve guest range 0x%08x+0x%x in the host", addr, size);
+        for (uint64_t at = addr; at < (uint64_t)addr + size;) {
+            MEMORY_BASIC_INFORMATION info;
+            if (!VirtualQuery((void *)(uintptr_t)at, &info, sizeof(info))) break;
+            if (info.State != MEM_FREE)
+                log_error("  in use: %p+0x%zx state 0x%lx", info.BaseAddress, (size_t)info.RegionSize,
+                          (unsigned long)info.State);
+            at = (uint64_t)(uintptr_t)info.BaseAddress + info.RegionSize;
+        }
+        return false;
+    }
+#else
     void *p = mmap(G2H(addr), size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE | MAP_NORESERVE, -1, 0);
     if (p == MAP_FAILED || p != G2H(addr)) {
@@ -404,6 +425,7 @@ extern "C" bool emu_map_identity(uint32_t addr, uint32_t size) {
         log_error("unable to reserve guest range 0x%08x+0x%x in the host", addr, size);
         return false;
     }
+#endif
     if (!g_pages) {
         g_pages = new PageTable{};
         g_mapped = new PageTable{};

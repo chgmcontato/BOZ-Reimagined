@@ -1,7 +1,12 @@
 #ifndef CODBOZ_ZEROCONF_PLATFORM_H
 #define CODBOZ_ZEROCONF_PLATFORM_H
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <netinet/in.h>
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
