@@ -13,3 +13,6 @@ __pycache__/
 *.keystore
 # reference screenshots / mockups
 /Sem título*.png
+perf.data
+perf.data.old
+/build-dynarmic/

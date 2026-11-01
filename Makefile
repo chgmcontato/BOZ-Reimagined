@@ -1,5 +1,12 @@
 CC ?= cc
 PKG_CONFIG ?= pkg-config
+# CPU backend: unicorn (default, stable) or dynarmic (experimental; builds into build-dynarmic/,
+# run it with `build-dynarmic/codboz-pc --data build/game`).
+EMU ?= unicorn
+.DEFAULT_GOAL := all
+ifeq ($(EMU),dynarmic)
+BUILD_DIR ?= build-dynarmic
+endif
 BUILD_DIR ?= build
 TARGET ?= $(BUILD_DIR)/codboz-pc
 
@@ -49,6 +56,38 @@ SRC := \
   third_party/LzmaDec.c
 OBJ := $(SRC:%.c=$(BUILD_DIR)/%.o)
 
+ifeq ($(EMU),dynarmic)
+CXX ?= c++
+CMAKE ?= cmake
+# Boost headers (header-only use). Override with BOOST_INCLUDE_DIR=... if yours live elsewhere.
+BOOST_INCLUDE_DIR ?= $(HOME)/Documents/Codex/2026-11-01/o-p/work/experimental-dynarmic/vendor/boost/include
+DYN_SRC := third_party/dynarmic
+DYN_BUILD := $(BUILD_DIR)/dynarmic
+DYN_LIBS := $(DYN_BUILD)/src/dynarmic/libdynarmic.a $(DYN_BUILD)/externals/mcl/src/libmcl.a \
+  $(DYN_BUILD)/externals/fmt/libfmt.a $(DYN_BUILD)/externals/zydis/libZydis.a \
+  $(DYN_BUILD)/externals/zydis/zycore/libZycore.a
+UC_CFLAGS :=
+UC_LIBS :=
+PROJECT_LDFLAGS := -no-pie
+OBJ := $(filter-out $(BUILD_DIR)/src/emu.o,$(OBJ)) $(BUILD_DIR)/src/emu_dynarmic.o
+LINK := $(CXX)
+
+$(DYN_LIBS) &:
+	$(CMAKE) -S $(DYN_SRC) -B $(DYN_BUILD) -DCMAKE_BUILD_TYPE=Release \
+	  -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(CXX) -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+	  -DDYNARMIC_FRONTENDS=A32 -DDYNARMIC_TESTS=OFF -DDYNARMIC_USE_BUNDLED_EXTERNALS=ON \
+	  -DDYNARMIC_WARNINGS_AS_ERRORS=OFF -DBoost_INCLUDE_DIR=$(BOOST_INCLUDE_DIR)
+	$(CMAKE) --build $(DYN_BUILD) --target dynarmic -j$$(nproc)
+
+$(BUILD_DIR)/src/emu_dynarmic.o: src/emu_dynarmic.cpp src/*.h $(DYN_LIBS)
+	@mkdir -p $(dir $@)
+	$(CXX) -std=c++20 -O3 -g -march=x86-64-v2 -flto=auto -Wall -Wextra -D_GNU_SOURCE \
+	  -Isrc -I$(DYN_SRC)/src -c $< -o $@
+else
+LINK := $(CC)
+DYN_LIBS :=
+endif
+
 all: $(TARGET)
 
 src/gl_thunks.c: tools/gen_gl.py
@@ -62,8 +101,8 @@ $(BUILD_DIR)/third_party/%.o: third_party/%.c
 	@mkdir -p $(dir $@)
 	$(CC) -std=gnu11 -O2 -D_7ZIP_ST -c $< -o $@
 
-$(TARGET): $(OBJ)
-	$(CC) $(PROJECT_LDFLAGS) $(LTO_LDFLAGS) -march=x86-64-v2 $(LDFLAGS) -o $@ $^ $(SDL_LIBS) $(UC_LIBS) -lm
+$(TARGET): $(OBJ) $(DYN_LIBS)
+	$(LINK) $(PROJECT_LDFLAGS) $(LTO_LDFLAGS) -march=x86-64-v2 $(LDFLAGS) -o $@ $(OBJ) $(DYN_LIBS) $(SDL_LIBS) $(UC_LIBS) -lm
 
 # Only compiled files: $(BUILD_DIR)/game holds the installed game data and saves.
 clean:
