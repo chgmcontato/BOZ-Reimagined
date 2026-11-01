@@ -127,7 +127,7 @@ static boolean coopSession() { return s_CoopSession; }
     }
     // painel de jogadores do pause nativo (1280x720): 4 cartões empilhados na coluna da direita
     // medido no quadro nativo do pause (1280x720): retrato x~878, pontos terminam em x~1218, passo vertical 167
-    static final int CARD_X=872, CARD_W=356, CARD_H=120, CARD_GAP=18, CARD_PAD_TOP=0;
+    static final int CARD_X=872, CARD_W=408, CARD_H=120, CARD_GAP=18, CARD_PAD_TOP=0;
     /** Vaga ocupada = tem o texto branco "SCORE:" (vaga vazia é só fundo escuro). */
     static boolean slotOccupied(Bitmap frame,int slot) {
         int x0=CARD_X+128,y0=CARD_TOP[slot]+38,w=110,h=26;
