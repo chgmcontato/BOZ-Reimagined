@@ -3,8 +3,8 @@
 Runs **Call of Duty: Black Ops Zombies** on a PC from **your own APK and OBB**, or from **your own iOS IPA**.
 No game data ships here.
 
-The game's ARM executable (`boz.s3e`) runs on an ARM emulator (Unicorn by default, or the much
-faster Dynarmic JIT with `make EMU=dynarmic`, see below); its system calls
+The game's ARM executable (`boz.s3e`) runs on the Dynarmic ARM JIT (or on Unicorn with
+`make EMU=unicorn`, see below); its system calls
 (s3e, EGL, OpenGL ES, sound, sockets, ZeroConf) are reimplemented on SDL2 and desktop OpenGL.
 The game always renders at 1280x720, the TV's resolution, scaled to the monitor
 (borderless fullscreen by default).
@@ -12,8 +12,9 @@ The game always renders at 1280x720, the TV's resolution, scaled to the monitor
 ## Start
 
 ```sh
-make CC=gcc PKG_CONFIG_PATH=/home/linuxbrew/.linuxbrew/lib/pkgconfig
-./build/codboz-pc
+git submodule update --init --recursive
+make CC=gcc CXX=g++ PKG_CONFIG_PATH=/home/linuxbrew/.linuxbrew/lib/pkgconfig
+./run.sh
 ```
 
 The launcher opens: pick a mode, **Install** from an APK or an IPA (the mode is detected from the
@@ -24,15 +25,16 @@ choice; `--install FILE` installs from the command line.
 Data lives in `build/game/`: `settings.txt`, `bindings.txt`, `launcher.cfg`, and one folder per
 mode (`original/`, `reimagined/`, `ios/`) with its assets and saves.
 
-### Faster CPU emulation (Dynarmic)
+### CPU backends (Dynarmic, Unicorn)
 
 ```sh
-git submodule update --init --recursive
-make EMU=dynarmic CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/path/to/boost/include
-./build-dynarmic/codboz-pc --data build/game
+make CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/path/to/boost/include      # Dynarmic (default)
+make EMU=unicorn CC=gcc                                            # Unicorn, into build-unicorn/
+./build-unicorn/codboz-pc --data build/game
 ```
 
-Same game, same data, about 6x less CPU time per frame (Call of the Dead without vsync: 38 -> 211
+`run.sh` starts `build/codboz-pc`; `CODBOZ_EMU=unicorn ./run.sh` starts the Unicorn build.
+Dynarmic: same game, same data, about 6x less CPU time per frame (Call of the Dead without vsync: 38 -> 211
 fps on a Radeon 610M laptop). `CODBOZ_DYN_FASTMEM=1` is faster still but lets the game reach any
 low host memory; `CODBOZ_DYN_CODE_WATCH=1` checks for self-modifying code (none found).
 Details: `tools/dynarmic_probe/README.md`.

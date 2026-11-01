@@ -16,3 +16,4 @@ __pycache__/
 perf.data
 perf.data.old
 /build-dynarmic/
+/build-unicorn/

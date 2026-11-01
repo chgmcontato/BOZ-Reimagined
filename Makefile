@@ -1,11 +1,12 @@
 CC ?= cc
 PKG_CONFIG ?= pkg-config
-# CPU backend: unicorn (default, stable) or dynarmic (experimental; builds into build-dynarmic/,
-# run it with `build-dynarmic/codboz-pc --data build/game`).
-EMU ?= unicorn
+# CPU backend: dynarmic (default, JIT, needs the third_party/dynarmic submodule and Boost headers)
+# or unicorn (`make EMU=unicorn`, builds into build-unicorn/; run it with
+# `build-unicorn/codboz-pc --data build/game`).
+EMU ?= dynarmic
 .DEFAULT_GOAL := all
-ifeq ($(EMU),dynarmic)
-BUILD_DIR ?= build-dynarmic
+ifeq ($(EMU),unicorn)
+BUILD_DIR ?= build-unicorn
 endif
 BUILD_DIR ?= build
 TARGET ?= $(BUILD_DIR)/codboz-pc
