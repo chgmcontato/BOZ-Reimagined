@@ -358,14 +358,14 @@ static int send_publication(struct zero_conf_publisher *publisher, int goodbye,
         .txt_count = publisher->txt_count,
     };
     memcpy(service.ipv4, publisher->ipv4, sizeof(service.ipv4));
-    /* Match the native Android BOZ wire convention in both directions. Keep
-     * real endpoints in publisher state; only encode the legacy announcement. */
+    /* Match the native Android BOZ wire convention for the SRV port: Marmalade's mDNS writes
+     * htons() of the game's raw network-order port, and its reader ntohs() it back before the
+     * game copies it into a network-order address. The A record is NOT reversed: the native
+     * reader (libs3e_android.so 0x21a78) memcpy()s the 4 rdata bytes straight into the address,
+     * so a reversed A sends the TV to a non-existent host and it opens its own lobby. */
     if (name_matches(publisher->service_type, "_PROJECT_KIWI._tcp") &&
         name_matches(publisher->domain, "local")) {
         service.port = htons(service.port);
-        for (int i = 0; i < 4; ++i) {
-            service.ipv4[i] = publisher->ipv4[3 - i];
-        }
     }
     struct mdns_wire_response_options options = {
         .header_flags = MDNS_WIRE_RESPONSE_FLAGS,

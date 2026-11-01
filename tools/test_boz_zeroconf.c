@@ -54,11 +54,11 @@ int main(void) {
             assert(r->data.srv.port == 10435);srv++;
         }
         if (r->data_kind == MDNS_WIRE_RDATA_A) {
-            assert(memcmp(r->data.a.address, reversed, 4) == 0);a++;
+            assert(memcmp(r->data.a.address, correct, 4) == 0);a++;
         }
     }
     assert(a && srv);assert(publisher.port == 49960);
     assert(memcmp(publisher.ipv4, correct, 4) == 0);
-    puts("PASS: dynamic/fixed ports, alternating A records, unrelated addresses/services, native-compatible publication");
+    puts("PASS: dynamic/fixed ports, alternating A records, unrelated addresses/services, native-compatible publication (swapped SRV port, correct A)");
     return 0;
 }
