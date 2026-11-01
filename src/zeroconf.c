@@ -1017,7 +1017,20 @@ void s3e_zero_conf_process_packet(const uint8_t *data, size_t data_size,
         struct zero_conf_publisher *publisher = &g_publishers[i];
         int unicast_response = 0;
         if (publisher->in_use && publisher_matches_query(publisher, packet, &unicast_response)) {
-            send_publication(publisher, 0, unicast_response && source ? source : NULL);
+            /* Also answer the asker directly: an Android TV running a VPN (ZeroTier) sends its
+             * query through the VPN but never gets multicast back from it, so it would miss the
+             * lobby and open its own. Unicast through the VPN does arrive. */
+            if (source) {
+                (void)send_publication(publisher, 0, source);
+                log_info("co-op: answered %u.%u.%u.%u directly",
+                          ((const uint8_t *)&source->sin_addr.s_addr)[0],
+                          ((const uint8_t *)&source->sin_addr.s_addr)[1],
+                          ((const uint8_t *)&source->sin_addr.s_addr)[2],
+                          ((const uint8_t *)&source->sin_addr.s_addr)[3]);
+            }
+            if (!unicast_response || !source) {
+                send_publication(publisher, 0, NULL);
+            }
         }
     }
     free(packet);
