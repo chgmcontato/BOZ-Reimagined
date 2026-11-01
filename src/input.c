@@ -132,7 +132,8 @@ static SDL_GameController *g_controller;
 
 /*
  * Test automation: CODBOZ_SCRIPT="TIME CMD ARGS; ..." with TIME in seconds since start.
- *   click X Y | key CODE 0/1 | move X Y | look DX DY | capture 0/1
+ *   click X Y | mclick X Y | key CODE 0/1 | move X Y | look DX DY | capture 0/1 | esc | shot
+ *   "@screen" waits for a recognised screen; "shot" saves the frame to $CODBOZ_SHOT_DIR.
  */
 struct script_step {
     float time;
@@ -787,6 +788,14 @@ static void script_run(void) {
             pointer_motion((int32_t)step->a, (int32_t)step->b);
             pointer_button(1);
             g_script_release_at = now + 120;
+        } else if (strcmp(step->cmd, "shot") == 0) {
+            /* "T shot": save this frame as $CODBOZ_SHOT_DIR/shot-T.ppm */
+            const char *dir = getenv("CODBOZ_SHOT_DIR");
+            char path[1100];
+            snprintf(path, sizeof(path), "%s/shot-%06.1f.ppm", dir ? dir : ".",
+                     (double)(now - g_script_start) / 1000.0);
+            extern void video_request_shot(const char *path);
+            video_request_shot(path);
         } else if (strcmp(step->cmd, "tap") == 0) {
             input_tap(step->a, step->b);
         } else if (strcmp(step->cmd, "key") == 0) {
