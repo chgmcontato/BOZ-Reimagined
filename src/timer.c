@@ -21,6 +21,12 @@ struct timer_event {
 static struct timer_event *g_timers;
 static uint64_t g_timer_sequence;
 static uint64_t g_start_us;
+static uint64_t g_frame_ms, g_frame_sample_us;
+static unsigned g_frame_reads;
+static bool g_frame_valid, g_cache_enabled;
+static struct {
+    uint64_t ms_calls, ust_calls, hits, live, frame, guard, stalls;
+} g_timer_perf;
 
 uint64_t monotonic_us(void) {
     static uint64_t freq;
@@ -39,12 +45,57 @@ void sleep_ms(uint32_t ms) {
     SDL_Delay(ms);
 }
 
-static uint64_t elapsed_ms(void) {
-    uint64_t now = monotonic_us();
+static uint64_t elapsed_at(uint64_t now) {
     if (!g_start_us) {
         g_start_us = now;
     }
     return (now - g_start_us) / 1000u;
+}
+
+void timer_frame_tick(void) {
+    if (!g_cache_enabled) return;
+    g_frame_sample_us = monotonic_us();
+    ++g_timer_perf.frame;
+    g_frame_ms = elapsed_at(g_frame_sample_us);
+    g_frame_reads = 0;
+    g_frame_valid = true;
+}
+
+static uint64_t elapsed_ms(void) {
+    if (g_cache_enabled && g_frame_valid) {
+        /* Normal gameplay samples the clock once per swap. A guest can also
+         * poll time without presenting (loading/timeouts). Check occasionally
+         * and return to the live clock if no frame has arrived for 100 ms;
+         * otherwise a timer-only busy wait could freeze the guest forever. */
+        if ((++g_frame_reads & 63u) == 0) {
+            uint64_t now = monotonic_us();
+            ++g_timer_perf.guard;
+            if (now - g_frame_sample_us >= 100000u) {
+                g_frame_valid = false;
+                ++g_timer_perf.stalls;
+                return elapsed_at(now);
+            }
+        }
+        ++g_timer_perf.hits;
+        return g_frame_ms;
+    }
+    ++g_timer_perf.live;
+    return elapsed_at(monotonic_us());
+}
+
+void timer_perf_reset(void) {
+    memset(&g_timer_perf, 0, sizeof(g_timer_perf));
+}
+
+void timer_perf_report(double seconds) {
+    if (seconds <= 0) seconds = 1;
+    uint64_t calls = g_timer_perf.ms_calls + g_timer_perf.ust_calls;
+    log_info("perf: timer ms/s %.0f ust/s %.0f clock/s %.0f frame_samples/s %.0f guard/s %.0f stale/s %.0f hits %.1f%%",
+             g_timer_perf.ms_calls / seconds, g_timer_perf.ust_calls / seconds,
+             (g_timer_perf.live + g_timer_perf.frame + g_timer_perf.guard) / seconds,
+             g_timer_perf.frame / seconds, g_timer_perf.guard / seconds,
+             g_timer_perf.stalls / seconds, calls ? 100.0 * g_timer_perf.hits / calls : 0);
+    timer_perf_reset();
 }
 
 static struct timer_event *remove_timer(uint32_t callback, uint32_t user_data) {
@@ -73,10 +124,13 @@ void dispatch_due_timers(void) {
 }
 
 IMPORT(s3eTimerGetUST) {
+    ++g_timer_perf.ust_calls;
+    /* Preserve this port's existing millisecond ABI for both entry points. */
     ret64(elapsed_ms());
 }
 
 IMPORT(s3eTimerGetMs) {
+    ++g_timer_perf.ms_calls;
     ret64(elapsed_ms());
 }
 
@@ -139,6 +193,13 @@ IMPORT(s3eTimerGetLocaltimeOffset) {
 }
 
 void register_timer_imports(void) {
+    const char *cache = getenv("CODBOZ_TIMER_CACHE");
+    /* The manual COTD A/B did not establish an FPS gain. Keep frame-quantized
+     * guest time opt-in rather than changing timer semantics by default. */
+    g_cache_enabled = cache && strcmp(cache, "0") != 0;
+    g_frame_valid = false;
+    log_info("guest timer cache: %s (CODBOZ_TIMER_CACHE=1 enables experimental frame time; live on stalled frames)",
+             g_cache_enabled ? "on" : "off");
     REG(s3eTimerGetUST);
     REG(s3eTimerGetMs);
     REG(s3eTimerGetInt);

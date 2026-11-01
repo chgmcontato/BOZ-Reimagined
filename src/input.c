@@ -31,6 +31,9 @@ enum {
     TOUCHPAD_WIDTH = 960,
     TOUCHPAD_HEIGHT = 544,
     AXIS_DEADZONE = 7000,
+    MENU_CLICK_COOLDOWN_MS = 200,
+    MENU_TOUCH_SETTLE_MS = 32,
+    MENU_TOUCH_HOLD_MS = 200,
 
     /* with the boz-reimagined bindings (see assets.c) */
     XPERIA_KEY_RELOAD_PATCHED = 9,
@@ -84,7 +87,29 @@ static uint8_t g_key_published[KEYBOARD_KEY_COUNT];
 static int32_t g_pointer_x, g_pointer_y;
 static int g_pointer_down;
 static uint8_t g_pointer_state;
+static uint8_t g_pointer_published;
+static uint64_t g_pointer_updates, g_pointer_down_at;
+static bool g_pointer_uses_polling, g_pointer_press_seen;
+static bool g_mouse_touch_active, g_mouse_release_pending;
 static bool g_menu_mouse_owned;
+static bool g_menu_mouse_down;
+static uint64_t g_menu_next_click_at;
+static bool g_input_debug;
+
+static bool menu_mouse_begin(void) {
+    if (g_menu_mouse_down) {
+        return false;
+    }
+    g_menu_mouse_down = true;
+    uint64_t now = monotonic_ms();
+    if (now < g_menu_next_click_at) {
+        g_menu_mouse_owned = true; /* Consume this rejected click's mouse-up too. */
+        if (g_input_debug) log_info("[debug] input menu: click ignored (200 ms cooldown)");
+        return false;
+    }
+    g_menu_next_click_at = now + MENU_CLICK_COOLDOWN_MS;
+    return true;
+}
 
 static bool menu_mouse_owns_release(void) {
     bool owned = g_menu_mouse_owned;
@@ -100,7 +125,7 @@ static int g_mouse_dx, g_mouse_dy;
 static float g_look_x, g_look_y;
 static int g_pumping;
 static bool g_manual;         /* Tab/Esc override until the game changes mode again */
-static int g_pause_pulse;     /* frames left holding the Xperia pause key */
+static uint64_t g_pause_release_at;
 static int g_auto_capture = -1; /* last automatic decision */
 
 static SDL_GameController *g_controller;
@@ -202,7 +227,13 @@ static void pointer_button(int down) {
         return;
     }
     g_pointer_down = down;
-    g_pointer_state = down ? POINTER_STATE_PRESSED : POINTER_STATE_RELEASED;
+    g_pointer_state = down ? POINTER_STATE_DOWN | POINTER_STATE_PRESSED : POINTER_STATE_RELEASED;
+    g_pointer_press_seen = false;
+    if (down) g_pointer_down_at = monotonic_ms();
+    if (g_input_debug) {
+        log_info("[debug] input menu: %s at %d,%d t=%llu", down ? "down" : "up",
+                 g_pointer_x, g_pointer_y, (unsigned long long)monotonic_ms());
+    }
     uint32_t event = event_buffer();
     int32_t *e = G2H(event);
     e[0] = 0; /* button / touch id */
@@ -232,62 +263,82 @@ static void pointer_motion(int32_t x, int32_t y) {
     dispatch(g_pointer_cb, COUNT(g_pointer_cb), 3, event); /* TOUCH_MOTION */
 }
 
+/* Publish edges after pumping, just like the keyboard. Other host pumps must not
+ * consume PRESSED/RELEASED before the guest's s3ePointerUpdate/GetState pair. */
+static void pointer_publish(void) {
+    g_pointer_uses_polling = true;
+    ++g_pointer_updates;
+    g_pointer_published = g_pointer_state;
+    if (g_pointer_down) g_pointer_press_seen = true;
+    g_pointer_state = g_pointer_down ? POINTER_STATE_DOWN : POINTER_STATE_UP;
+}
+
+static bool pointer_can_release(uint64_t now) {
+    return now >= g_pointer_down_at + MENU_TOUCH_HOLD_MS &&
+           (g_pointer_press_seen || !g_pointer_uses_polling);
+}
+
+static void mouse_touch_update(void) {
+    if (g_mouse_release_pending && pointer_can_release(monotonic_ms())) {
+        g_mouse_release_pending = g_mouse_touch_active = false;
+        pointer_button(0);
+    }
+}
+
 /* Scripted taps on the Flash menu (the reimagined menus press its buttons). */
 static uint64_t g_tap_release_at; /* non-zero while a tap is in progress */
 static uint64_t g_tap_press_at;   /* the finger lands this long after moving there */
-static uint64_t g_input_frame, g_tap_move_frame, g_tap_down_frame;
-static uint64_t g_tap_position_frames = 1;
+static uint64_t g_tap_position_update;
 
 bool input_has_controller(void) {
     return g_controller != NULL;
 }
 
 void input_cancel_tap(void) {
-    g_tap_press_at = g_tap_release_at = 0; pointer_button(0);
+    g_tap_press_at = g_tap_release_at = 0;
+    g_mouse_release_pending = g_mouse_touch_active = false;
+    pointer_button(0);
 }
 
 bool input_tap_busy(void) {
     return g_tap_release_at != 0;
 }
 
+static bool menu_mouse_touch_busy(void) {
+    /* A new raw DOWN must not overwrite an UP the guest has not published yet. */
+    return g_mouse_touch_active || input_tap_busy() || g_pointer_down ||
+           (g_pointer_uses_polling && (g_pointer_state & POINTER_STATE_RELEASED));
+}
+
 /*
- * Like a finger: move there, let the game see a couple of frames at that spot, then
- * press for 150 ms. A press in the same frame as the move was sometimes missed.
+ * Move, settle in real time, then hold for at least 200 ms. For polling clients,
+ * wait for the guest to publish the position/down before advancing the gesture;
+ * this is an input acknowledgement, independent of the rendering frame rate.
  */
 void input_tap(float x, float y) {
-    if (g_tap_release_at) {
+    if (g_tap_release_at || g_mouse_touch_active) {
         return;
     }
     pointer_motion((int32_t)(x * (float)video_width() / 1280.0f),
                    (int32_t)(y * (float)video_height() / 720.0f));
     uint64_t now = monotonic_ms();
-    g_tap_move_frame = g_input_frame;
-    g_tap_position_frames = screens_is("main") ? 2 : 1;
-    if (screens_is("title") || screens_is("title_prompt")) {
-        pointer_button(1);
-        g_tap_press_at = 0;
-        g_tap_down_frame = g_input_frame;
-    } else {
-        /* The native UI caches its pointer position when updating each frame. */
-        g_tap_press_at = now + 1;
-    }
-    g_tap_release_at = now + 150;
+    g_tap_position_update = g_pointer_updates;
+    g_tap_press_at = now + MENU_TOUCH_SETTLE_MS;
+    g_tap_release_at = g_tap_press_at + MENU_TOUCH_HOLD_MS;
 }
 
 static void tap_update(void) {
     uint64_t now = monotonic_ms();
-    if (g_tap_press_at && now >= g_tap_press_at && g_input_frame >= g_tap_move_frame + g_tap_position_frames) {
+    if (g_tap_press_at && now >= g_tap_press_at &&
+        (!g_pointer_uses_polling || g_pointer_updates != g_tap_position_update)) {
         g_tap_press_at = 0;
         pointer_button(1);
-        g_tap_down_frame = g_input_frame;
-        g_tap_release_at = now + 150;
-        log_debug("tap down at %d,%d", g_pointer_x, g_pointer_y);
+        g_tap_release_at = now + MENU_TOUCH_HOLD_MS;
     }
     if (g_tap_release_at && !g_tap_press_at && now >= g_tap_release_at &&
-        g_input_frame >= g_tap_down_frame + 2) {
+        pointer_can_release(now)) {
         g_tap_release_at = 0;
         pointer_button(0);
-        log_debug("tap up");
     }
 }
 
@@ -406,7 +457,7 @@ static void set_captured(bool captured) {
     g_mouse_dx = g_mouse_dy = 0;
     g_look_x = g_look_y = 0;
     if (captured) {
-        pointer_button(0);
+        input_cancel_tap();
     } else {
         pad_release(0);
         pad_release(1);
@@ -467,6 +518,8 @@ static void handle_event(const SDL_Event *ev) {
         exit(0);
     case SDL_WINDOWEVENT:
         if (ev->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+            input_cancel_tap();
+            g_menu_mouse_down = g_menu_mouse_owned = false;
             set_captured(false);
         }
         break;
@@ -521,7 +574,7 @@ static void handle_event(const SDL_Event *ev) {
                 log_info("dead ops: pause button (frame saved to build/doa-pause.ppm)");
             } else {
                 key_set(XPERIA_KEY_PAUSE, 1);
-                g_pause_pulse = 3;
+                g_pause_release_at = monotonic_ms() + MENU_TOUCH_HOLD_MS;
             }
             break;
         }
@@ -554,7 +607,8 @@ static void handle_event(const SDL_Event *ev) {
             float rx, ry;
             ui_window_to_ref(ev->motion.x, ev->motion.y, &rx, &ry);
             menus_hover(rx, ry);
-            if (!g_tap_release_at && !g_menu_mouse_owned && menus_pointer_passthrough(rx, ry)) {
+            if (!g_tap_release_at && !g_menu_mouse_owned && !g_mouse_release_pending &&
+                menus_pointer_passthrough(rx, ry)) {
                 int32_t x, y;
                 window_to_surface(ev->motion.x, ev->motion.y, &x, &y);
                 pointer_motion(x, y);
@@ -564,6 +618,15 @@ static void handle_event(const SDL_Event *ev) {
     case SDL_MOUSEBUTTONDOWN:
     case SDL_MOUSEBUTTONUP: {
         int down = ev->type == SDL_MOUSEBUTTONDOWN;
+        if (ev->button.button == SDL_BUTTON_LEFT && !down) {
+            g_menu_mouse_down = false;
+            if (menu_mouse_owns_release()) break;
+            if (g_mouse_touch_active) {
+                g_mouse_release_pending = true;
+                mouse_touch_update();
+                break;
+            }
+        }
         /* in gameplay the screen has no touch controls we want: a click grabs the mouse */
         /* also after Esc/Tab/Alt-Tab: in co-op the pause key opens no menu, so g_manual would
          * otherwise stay set and the click would never give the camera back */
@@ -578,6 +641,11 @@ static void handle_event(const SDL_Event *ev) {
         }
         if (!g_captured) {
             if (ev->button.button == SDL_BUTTON_LEFT && down) {
+                if (!menu_mouse_begin()) break;
+                if (menu_mouse_touch_busy()) {
+                    g_menu_mouse_owned = true;
+                    break;
+                }
                 float rx, ry;
                 ui_window_to_ref(ev->button.x, ev->button.y, &rx, &ry);
                 menus_set_pad_mode(false);
@@ -590,18 +658,17 @@ static void handle_event(const SDL_Event *ev) {
                     if (!g_tap_release_at) {
                         input_tap(640, 650);
                     }
+                    g_menu_mouse_owned = true;
                     break;
                 }
             }
-            if (ev->button.button == SDL_BUTTON_LEFT && !down && menu_mouse_owns_release()) {
-                break;
-            }
-            if (ev->button.button == SDL_BUTTON_LEFT && !g_tap_release_at &&
+            if (ev->button.button == SDL_BUTTON_LEFT && down && !g_tap_release_at &&
                 !(screens_is("title") || screens_is("title_prompt"))) {
                 int32_t x, y;
                 window_to_surface(ev->button.x, ev->button.y, &x, &y);
                 pointer_motion(x, y);
-                pointer_button(down);
+                g_mouse_touch_active = true;
+                pointer_button(1);
             }
             break;
         }
@@ -853,7 +920,8 @@ static void update_gameplay(float dt) {
 
     static uint8_t last[BIND_COUNT];
     static int leave_aim_frames;
-    if (g_pause_pulse > 0 && --g_pause_pulse == 0) {
+    if (g_pause_release_at && monotonic_ms() >= g_pause_release_at) {
+        g_pause_release_at = 0;
         key_set(XPERIA_KEY_PAUSE, 0);
     }
     if (leave_aim_frames > 0 && --leave_aim_frames == 0) {
@@ -925,6 +993,7 @@ void input_pump(void) {
         g_manual = false;
         set_captured(want != 0);
     }
+    mouse_touch_update();
     tap_update();
     if (g_script_count) {
         script_run();
@@ -934,10 +1003,11 @@ void input_pump(void) {
 }
 
 void input_after_swap(void) {
-    ++g_input_frame;
+    /* Touch timing uses monotonic milliseconds and guest input acknowledgement. */
 }
 
 bool input_init(void) {
+    g_input_debug = getenv("CODBOZ_INPUT_DEBUG") != NULL;
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         if (SDL_IsGameController(i) && !g_controller) {
@@ -1042,12 +1112,8 @@ IMPORT(s3ePointerUnRegister) {
 }
 
 IMPORT(s3ePointerUpdate) {
-    if (g_pointer_state == POINTER_STATE_PRESSED) {
-        g_pointer_state = POINTER_STATE_DOWN;
-    } else if (g_pointer_state == POINTER_STATE_RELEASED) {
-        g_pointer_state = POINTER_STATE_UP;
-    }
     input_pump();
+    pointer_publish();
     dispatch_due_timers();
     ret(0);
 }
@@ -1077,7 +1143,7 @@ IMPORT(s3ePointerSetInt) {
 }
 
 IMPORT(s3ePointerGetState) {
-    ret(arg(0) == 0 ? g_pointer_state : 0);
+    ret(arg(0) == 0 ? g_pointer_published : 0);
 }
 
 IMPORT(s3ePointerGetX) {

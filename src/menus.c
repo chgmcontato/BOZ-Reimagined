@@ -93,13 +93,28 @@ static const char *g_prev_screen;
 static const char *g_drawn_screen;
 static const char *g_pending_screen;
 static int g_pending_target = -1;
+static bool g_screen_unknown;
 static void activate(int index);
+
+/* Recognition can miss a Flash animation. Only a different recognised page (or
+ * entry into gameplay) ends the previous page's input/selection transaction. */
+static bool note_screen(const char *screen, bool match_active) {
+    bool changed = screen && screen != g_prev_screen;
+    if (changed && g_prev_screen && strncmp(screen, "title", 5) == 0 &&
+        strncmp(g_prev_screen, "title", 5) == 0) {
+        changed = false; /* The blinking title prompt is still the same page. */
+    }
+    if (screen || match_active) g_prev_screen = screen;
+    return changed;
+}
 
 /* character / map selection */
 static const char *const k_map_names[4] = {"KINO DER TOTEN", "DEAD OPS ARCADE", "ASCENSION",
                                            "CALL OF THE DEAD"};
 static int g_picked_map = 1, g_picked_char, g_carousel_at = -1;
 static bool g_map_busy, g_map_failed, g_launching;
+static bool g_start_requested;
+static int g_home_misses;
 static uint64_t g_map_deadline, g_arrow_tap_at, g_next_step, g_apply_char_at, g_start_at,
     g_launch_until;
 static int g_arrow_dir, g_art_before[48];
@@ -696,6 +711,14 @@ static void pick_map(int index) {
         return;
     }
     g_picked_map = index;
+    g_start_requested = false;
+    g_apply_char_at = 0;
+    g_start_at = 0;
+    /* Finish observing an in-flight arrow even when the requested map changes.
+     * Dropping it loses the carousel position and can drive into the end stop. */
+    if (g_map_busy && !g_map_failed) {
+        return;
+    }
     if (g_map_failed) {
         g_carousel_at = -1;
     }
@@ -704,9 +727,9 @@ static void pick_map(int index) {
     }
     g_map_failed = false;
     g_map_busy = true;
-    g_apply_char_at = 0;
+    g_home_misses = 0;
     g_arrow_tap_at = 0;
-    g_next_step = 0;
+    g_next_step = monotonic_ms() + 900; /* Let the native selection page settle. */
 }
 
 static void arrow_tap(int dir) {
@@ -750,6 +773,7 @@ static void selection_step(void) {
         g_arrow_tap_at = 0;
         g_map_busy = false;
         g_map_failed = true;
+        g_start_requested = false;
         log_info("menus: map selection timed out");
         return;
     }
@@ -762,6 +786,8 @@ static void selection_step(void) {
         }
         diff /= 48;
         if (diff > 12) {
+            g_home_misses = 0;
+            g_map_deadline = now + 20000; /* Timeout measures lack of progress, not slow loading. */
             if (g_carousel_at >= 0) {
                 g_carousel_at += g_arrow_dir;
             }
@@ -774,7 +800,13 @@ static void selection_step(void) {
         }
         g_arrow_tap_at = 0;
         if (g_carousel_at < 0 && g_arrow_dir < 0) {
-            g_carousel_at = 0; /* the tutorial is at the left end of the carousel */
+            /* A single ignored touch during loading is not proof of an end
+             * stop. Confirm with another completed, settled left attempt. */
+            if (++g_home_misses < 2) {
+                arrow_tap(-1);
+                return;
+            }
+            g_carousel_at = 0; /* tutorial: confirmed left end */
         } else {
             arrow_tap(g_arrow_dir);
             return;
@@ -791,10 +823,16 @@ static void selection_step(void) {
 }
 
 static void start_selected(void) {
-    if (g_map_busy || g_map_failed || g_launching) {
+    if (g_map_failed || g_launching) {
         return;
     }
+    if (g_map_busy) {
+        g_start_requested = true;
+        return;
+    }
+    g_start_requested = false;
     g_launching = true;
+    g_apply_char_at = 0;
     apply_character();
     g_start_at = monotonic_ms() + 300;
     g_launch_until = monotonic_ms() + 1800;
@@ -807,8 +845,11 @@ void menus_frame(void) {
         return;
     }
     const char *screen = screens_current();
+    bool match_active = reimagined_match_active();
+    bool newly_unknown = !screen && !g_screen_unknown;
+    g_screen_unknown = !screen;
     /* a probe that fails during a Flash animation would flash the original menu: hold a curtain */
-    if (!screen && g_prev_screen && !g_curtain && !reimagined_match_active() &&
+    if (newly_unknown && g_prev_screen && !g_curtain && !match_active &&
         !in_match_menu(g_prev_screen) && strcmp(g_prev_screen, "charselect") != 0) {
         const struct style *prev = style_of(g_prev_screen);
         /* only the pages drawn here would flash the Flash menu underneath */
@@ -816,13 +857,15 @@ void menus_frame(void) {
             begin_curtain(g_prev_screen, 0, 0);
         }
     }
-    if (screen && screen != g_prev_screen && strcmp(screen, "charselect") == 0) {
+    bool left_menus = !screen && match_active && g_prev_screen;
+    bool changed = note_screen(screen, match_active);
+    if (changed && strcmp(screen, "charselect") == 0) {
         g_carousel_at = -1;
         g_map_failed = false;
         g_launching = false;
         pick_map(g_picked_map);
     }
-    if (screen != g_prev_screen) {
+    if (changed || left_menus) {
         g_pending_target = -1;
         g_pending_screen = NULL;
         if (input_tap_busy()) {
@@ -831,12 +874,15 @@ void menus_frame(void) {
         g_focus = -1;
         g_hover = -1;
     }
-    g_prev_screen = screen;
     update_curtain(screen);
     if (screen && strcmp(screen, "charselect") == 0) {
         selection_step();
-    } else {
+        if (g_start_requested && !g_map_busy && !g_map_failed) {
+            start_selected();
+        }
+    } else if (screen || match_active) {
         g_map_busy = false;
+        g_start_requested = false;
     }
     build_targets(screen);
     if (g_focus >= g_target_count) {

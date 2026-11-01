@@ -6,6 +6,7 @@ uint32_t g_perf_by_thunk[8192];
 #include "log.h"
 
 #include <stdio.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unicorn/unicorn.h>
@@ -84,10 +85,19 @@ bool emu_map_identity(uint32_t addr, uint32_t size) {
         log_error("unable to reserve guest range 0x%08x+0x%x in the host", addr, size);
         return false;
     }
-    uc_err err = uc_mem_map_ptr(g_uc, addr, size, UC_PROT_ALL, host);
+    uint32_t perms = UC_PROT_ALL;
+    if (addr == GUEST_HEAP_BASE && getenv("CODBOZ_HEAP_RW")) {
+        perms = UC_PROT_READ | UC_PROT_WRITE;
+    }
+    uc_err err = uc_mem_map_ptr(g_uc, addr, size, perms, host);
     if (err != UC_ERR_OK) {
         log_error("uc_mem_map_ptr 0x%08x: %s", addr, uc_strerror(err));
         return false;
+    }
+    if (addr == GUEST_HEAP_BASE) {
+        log_info("guest heap permissions: %s (CODBOZ_HEAP_RW %s)",
+                 perms == UC_PROT_ALL ? "RWX" : "RW",
+                 perms == UC_PROT_ALL ? "unset" : "set");
     }
     return true;
 }
@@ -162,11 +172,52 @@ bool emu_init(void) {
     }
     uc_ctl_set_cpu_model(g_uc, UC_CPU_ARM_CORTEX_A15);
 
+    /* The setter must precede memory/register APIs (the getter initializes TCG).
+     * 64-bit Unicorn 2.1.4 defaults to 1 GiB; zero retains that library default. */
+    uint32_t tcg_mb = 2048;
+    const char *tcg_option = getenv("CODBOZ_TCG_MB");
+    if (tcg_option) {
+        char *end;
+        errno = 0;
+        unsigned long value = strtoul(tcg_option, &end, 10);
+        if (errno || end == tcg_option || *end || value > 2048 || (value && value < 32)) {
+            log_info("invalid CODBOZ_TCG_MB (use 0 or 32..2048); using %u MiB", tcg_mb);
+        } else {
+            tcg_mb = (uint32_t)value;
+        }
+    }
+    err = uc_ctl_set_tcg_buffer_size(g_uc, tcg_mb * 1024u * 1024u);
+    if (err != UC_ERR_OK) {
+        log_error("setting TCG buffer size: %s", uc_strerror(err));
+        return false;
+    }
+
+    /* Experimental identity translation: opt in only with the exact value 1.
+     * Set this after TCG size, before mappings initialize the engine. Never
+     * silently fall back after a failed request: that would invalidate an A/B. */
+    const char *tlb_option = getenv("CODBOZ_TLB_VIRTUAL");
+    if (tlb_option && strcmp(tlb_option, "1") == 0) {
+        err = uc_ctl_tlb_mode(g_uc, UC_TLB_VIRTUAL);
+        if (err != UC_ERR_OK) {
+            log_error("tlb_mode: virtual configuration failed: %s; aborting test", uc_strerror(err));
+            return false;
+        }
+        log_info("tlb_mode: virtual (experimental)");
+    } else {
+        log_info("tlb_mode: softmmu (default)");
+    }
+
     if (!emu_map_identity(GUEST_STACK_BASE, GUEST_STACK_SIZE) ||
         !emu_map_identity(GUEST_ARENA_BASE, GUEST_ARENA_SIZE) ||
         !emu_map_identity(GUEST_THUNK_BASE, GUEST_THUNK_SIZE) ||
         !emu_map_identity(GUEST_HEAP_BASE, GUEST_HEAP_SIZE)) {
         return false;
+    }
+    uint32_t tcg_bytes = 0;
+    err = uc_ctl_get_tcg_buffer_size(g_uc, &tcg_bytes);
+    if (err == UC_ERR_OK) {
+        log_info("TCG buffer: %u MiB (CODBOZ_TCG_MB=%u; 0 uses library default)",
+                 tcg_bytes / (1024u * 1024u), tcg_mb);
     }
     g_thunk_code = G2H(GUEST_THUNK_BASE);
     /* The return trampoline is never executed: uc_emu_start stops on it. */

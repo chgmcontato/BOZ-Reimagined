@@ -240,7 +240,7 @@ bool ui_capture_coop_players(struct ui_image *image) {
     if(!read_pixels)return false;
     /* present players only; card geometry measured on the native pause frame (1280x720):
      * portrait x~878, the score ends at x~1218, players 167 px apart starting at y~26 */
-    enum {CX=872,CW=356,CH=120,GAP=18};
+    enum {CX=872,CW=408,CH=120,GAP=18}; /* to the screen edge: everything the game can draw */
     uint8_t *cards=malloc(4*CW*CH*4), *panel=calloc((CW*2+GAP)*(CH*2+GAP),4);
     if(!cards || !panel){free(cards);free(panel);return false;}
     int32_t previous=0,pack=4;

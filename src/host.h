@@ -62,6 +62,9 @@ uint64_t monotonic_us(void);
 uint64_t monotonic_ms(void);
 void sleep_ms(uint32_t ms);
 void dispatch_due_timers(void);
+void timer_frame_tick(void);
+void timer_perf_reset(void);
+void timer_perf_report(double seconds);
 
 /* runtime.c */
 int device_quit_requested(void);

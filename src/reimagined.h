@@ -10,6 +10,7 @@ bool reimagined_enabled(void);
 bool reimagined_patched(void);
 bool reimagined_match_active(void);
 const char *reimagined_map(void);
+int reimagined_round(void);
 bool reimagined_deadops(void);
 void reimagined_patch_waves(void); /* before the game runs */
 int reimagined_zombie_count(int round, int players);

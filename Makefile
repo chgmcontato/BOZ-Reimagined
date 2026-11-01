@@ -24,6 +24,7 @@ SRC := \
   src/file.c \
   src/gheap.c \
   src/gl.c \
+  src/gl_state.c \
   src/gl_thunks.c \
   src/imports.c \
   src/input.c \
