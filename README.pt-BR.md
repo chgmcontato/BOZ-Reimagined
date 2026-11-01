@@ -151,7 +151,7 @@ O patch só funciona sobre o APK original. Guia completo, incluindo co-op pelo Z
 |---|---|---|---|
 | Instala a partir de | APK Android 1.0.11 | APK Reimagined da TV | IPA iOS 1.3.5 |
 | `boz.s3e` | intocado | o mesmo da TV, byte a byte | decodificado do IPA |
-| Co-op com | celulares com o original | TVs e PCs com o Reimagined | a mesma versão do iOS |
+| Co-op com | celulares com o original | TVs e PCs com o Reimagined | a mesma versão do iOS; entra em lobby de celular com o port 64 bits do iOS |
 | Ondas / drops | regras do celular | ritmo de horda do BO1, ciclo de drops do BO1, regras de Death Machine/DG-2 | regras do celular |
 | HUD | HUD do celular sem botões de toque | HUD da TV: contadores de granada, timer, contador de FPS | HUD do celular |
 

@@ -74,11 +74,24 @@ static void write_reimagined_name(void) {
  * displayed name changes, so co-op with phones still works.
  */
 static void override_original_name(uint32_t base) {
-    enum { REF = 0x18f74c, REF_PC = 0x18f60a, FORMAT = 0x3af131 };
-    uint8_t *ref = G2H(base + REF);
-    uint32_t rel;
-    memcpy(&rel, ref, 4);
-    if (rel != FORMAT - REF_PC || memcmp(G2H(base + FORMAT), "Player-%d", 10) != 0) {
+    static const struct {
+        uint32_t ref, ref_pc, format;
+    } builds[] = {
+        {0x18f74c, 0x18f60a, 0x3af131}, /* Android */
+        {0x09f080, 0x09ef3e, 0x39418c}, /* iOS 1.3.5 */
+    };
+    uint8_t *ref = NULL;
+    uint32_t rel, ref_pc = 0;
+    for (size_t i = 0; i < sizeof(builds) / sizeof(builds[0]) && !ref; ++i) {
+        uint8_t *candidate = G2H(base + builds[i].ref);
+        memcpy(&rel, candidate, 4);
+        if (rel == builds[i].format - builds[i].ref_pc &&
+            memcmp(G2H(base + builds[i].format), "Player-%d", 10) == 0) {
+            ref = candidate;
+            ref_pc = builds[i].ref_pc;
+        }
+    }
+    if (!ref) {
         return;
     }
     char name[16];
@@ -89,7 +102,7 @@ static void override_original_name(uint32_t base) {
         }
     }
     name[n] = 0;
-    rel = arena_strdup(name) - (base + REF_PC);
+    rel = arena_strdup(name) - (base + ref_pc);
     memcpy(ref, &rel, 4);
 }
 
@@ -240,6 +253,10 @@ int main(int argc, char **argv) {
     }
     const char *mode_dir = mode_dir_name(mode);
     if (mode == MODE_IOS) {
+        extern void zeroconf_set_ios_layout(int enabled);
+        zeroconf_set_ios_layout(1);
+        extern void input_set_native_pause_mode(bool enabled);
+        input_set_native_pause_mode(true);
         g_obb_path[0] = 0; /* the iOS data archive sits in its own assets folder */
     }
     snprintf(g_root, sizeof(g_root), "%s/%s", g_data_root, mode_dir);

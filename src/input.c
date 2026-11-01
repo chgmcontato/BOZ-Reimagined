@@ -494,7 +494,39 @@ static bool leads_to_game(const char *id) {
  * Does the game want the mouse as a camera? Menus are recognised from the frame
  * (screens.c); the reimagined binary also tells when a match is running.
  */
+/*
+ * The iOS build's in-match pause matches no recognition probe (they come from TV frames), so it
+ * looks like gameplay and a click on RETURN would only grab the mouse. Remember the Esc instead.
+ */
+static bool g_native_pause_mode, g_native_pause_open;
+static uint64_t g_native_pause_close_at;
+
+void input_set_native_pause_mode(bool enabled) {
+    g_native_pause_mode = enabled;
+}
+
+/* Let the tap on RETURN reach the game before the camera takes the mouse back. */
+static void native_pause_close(void) {
+    g_native_pause_close_at = monotonic_ms() + 400;
+}
+
+static bool native_pause_active(void) {
+    if (!g_native_pause_open) {
+        return false;
+    }
+    if (screens_current() ||
+        (g_native_pause_close_at && monotonic_ms() >= g_native_pause_close_at)) {
+        g_native_pause_open = false;
+        g_native_pause_close_at = 0;
+        return false;
+    }
+    return true;
+}
+
 static int wants_capture(void) {
+    if (native_pause_active()) {
+        return 0;
+    }
     if (screens_available()) {
         if (screens_current()) {
             return 0;
@@ -582,7 +614,16 @@ static void handle_event(const SDL_Event *ev) {
             } else {
                 key_set(XPERIA_KEY_PAUSE, 1);
                 g_pause_release_at = monotonic_ms() + MENU_TOUCH_HOLD_MS;
+                if (g_native_pause_mode) {
+                    g_native_pause_open = true;
+                    g_native_pause_close_at = 0;
+                }
             }
+            break;
+        }
+        if (sc == SDL_SCANCODE_ESCAPE && down && native_pause_active()) {
+            input_tap(221, 640); /* RETURN */
+            native_pause_close();
             break;
         }
         if (!g_captured && down) {
@@ -625,6 +666,13 @@ static void handle_event(const SDL_Event *ev) {
     case SDL_MOUSEBUTTONDOWN:
     case SDL_MOUSEBUTTONUP: {
         int down = ev->type == SDL_MOUSEBUTTONDOWN;
+        if (ev->button.button == SDL_BUTTON_LEFT && down && native_pause_active()) {
+            int32_t px, py;
+            window_to_surface(ev->button.x, ev->button.y, &px, &py);
+            if (px < 420 && py > 570) { /* RETURN, bottom left */
+                native_pause_close();
+            }
+        }
         if (ev->button.button == SDL_BUTTON_LEFT && !down) {
             g_menu_mouse_down = false;
             if (menu_mouse_owns_release()) break;

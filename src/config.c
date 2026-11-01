@@ -421,6 +421,13 @@ void config_load_image(const uint8_t *data, uint32_t size) {
 bool g_pvrtc_textures;
 
 IMPORT(s3eConfigGetInt) {
+    /* The iOS image sets [NETWORK] custom_mDNS_impl=1, which swaps s3eZeroConf for the game's own
+     * mDNS client: it needs the s3eSocketOpt extension and faults stopping its search here
+     * (handle 1 read as a pointer at 0x4a20e8fa). Unset, the game uses s3eZeroConf like Android. */
+    if (strcasecmp(G2H(arg(1)), "custom_mDNS_impl") == 0) {
+        ret(1);
+        return;
+    }
     const char *value = config_get(G2H(arg(0)), G2H(arg(1)));
     int32_t parsed = 0;
     int found = value && parse_int_value(value, 0, &parsed);

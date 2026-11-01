@@ -65,8 +65,6 @@ struct target {
 };
 
 static bool g_enabled;
-static struct ui_image g_coop_players;
-static uint64_t g_coop_players_at;
 static struct ui_image g_paper, g_title, g_strip, g_back, g_start, g_tick;
 static struct ui_image g_portraits[4], g_scenes[4];
 static struct ui_image g_art_pool[8];
@@ -390,6 +388,23 @@ static const struct style *style_of(const char *id) {
     return NULL;
 }
 
+static bool coop_native_pause(const char *id) {
+    return id && screens_coop_session() && (strcmp(id, "pause") == 0 || strcmp(id, "pausecoop") == 0);
+}
+
+/* pausecoop's buttons (return, settings, leave, timer, fps) over the native art, 1280x720. */
+static void coop_pause_bounds(int index, struct button *b) {
+    static const float bounds[5][4] = {{115, 593, 222, 97},
+                                       {279, 166, 177, 181},
+                                       {579, 380, 183, 144},
+                                       {400, 630, 170, 56},
+                                       {582, 630, 150, 56}};
+    b->x = bounds[index][0];
+    b->y = bounds[index][1];
+    b->w = bounds[index][2];
+    b->h = bounds[index][3];
+}
+
 static void add_buttons(const struct button *buttons, int count) {
     for (int i = 0; i < count; ++i) {
         const struct button *b = &buttons[i];
@@ -416,6 +431,13 @@ static void build_targets(const char *screen) {
         }
         add_target(952, 577, 254, 94, 0, 0, T_START, 0, "", false);
         add_target(80, 577, 215, 94, 267, 622, T_TAP, 0, "*", false);
+    } else if (s && s->page && coop_native_pause(screen)) {
+        for (int i = 0; i < s->button_count && i < 5; ++i) {
+            struct button b = s->buttons[i];
+            coop_pause_bounds(i, &b);
+            add_buttons(&b, 1);
+            g_targets[g_target_count - 1].index = i;
+        }
     } else if (s && s->page) {
         add_buttons(s->buttons, s->button_count);
     } else {
@@ -537,8 +559,41 @@ static const char *map_backdrop_index(void) {
     return reimagined_map();
 }
 
+/* The game's own co-op pause stays visible; only what it lacks is drawn on top. */
+static void draw_coop_pause_page(const struct style *s) {
+    extern const char *reimagined_map(void);
+    extern int reimagined_round(void);
+    const char *map = reimagined_map();
+    const char *name = !map || !map[0] ? NULL : strstr(map, "kino") || strstr(map, "theater") ? "KINO DER TOTEN"
+                       : strstr(map, "ascension") ? "ASCENSION" : strstr(map, "callofthedead") ? "CALL OF THE DEAD"
+                       : strstr(map, "deadops") ? "DEAD OPS ARCADE" : NULL;
+    int round = reimagined_round();
+    char line[96] = "";
+    if (name && round > 0 && !strstr(map, "deadops")) {
+        snprintf(line, sizeof(line), "%s   -   ROUND %d", name, round);
+    } else if (name) {
+        snprintf(line, sizeof(line), "%s", name);
+    }
+    if (line[0]) {
+        float pts[8];
+        comic_pts(84, 104, 440, 44, 3, pts);
+        ui_quad(pts, INK);
+        comic_outline(pts);
+        text(line, 102, 134, 22, PAPER, 404, false, UI_LEFT);
+    }
+    for (int i = 3; i < s->button_count && i < 5; ++i) {
+        struct button b = s->buttons[i];
+        coop_pause_bounds(i, &b);
+        draw_tile(&b, false);
+    }
+}
+
 static void draw_page(const struct style *s, const char *id) {
     bool pause = strcmp(id, "pause") == 0;
+    if (coop_native_pause(id)) {
+        draw_coop_pause_page(s);
+        return;
+    }
     if (s->has_window) {
         ui_mask_begin();
         ui_rect(s->window[0], s->window[1], s->window[2], s->window[3], 0xffffffffu);
@@ -575,8 +630,7 @@ static void draw_page(const struct style *s, const char *id) {
     if (pause) {
         extern int reimagined_round(void);
         char line[96];
-        int up = screens_coop_session() ? 36 : 0; /* co-op: header moves up for the player cards */
-        text(host_player_name(), 196, 214 - up, 44, PAPER, 640, false, UI_LEFT);
+        text(host_player_name(), 196, 214, 44, PAPER, 640, false, UI_LEFT);
         const char *map = map_backdrop_index();
         const char *name = !map || !map[0] ? NULL : strstr(map, "kino") || strstr(map, "theater") ? "KINO DER TOTEN"
                            : strstr(map, "ascension") ? "ASCENSION" : strstr(map, "callofthedead") ? "CALL OF THE DEAD"
@@ -588,20 +642,8 @@ static void draw_page(const struct style *s, const char *id) {
             snprintf(line + n, sizeof(line) - n, "ROUND %d", round);
         }
         if (line[0]) {
-            text(line, 198, 252 - (up ? 40 : 0), 26, SAND, 640, false, UI_LEFT);
+            text(line, 198, 252, 26, SAND, 640, false, UI_LEFT);
         }
-    }
-    if (pause && screens_coop_session()) {
-        uint64_t now=monotonic_ms();
-        if(!g_coop_players.tex || now-g_coop_players_at>=250) {
-            ui_capture_coop_players(&g_coop_players);g_coop_players_at=now;
-        }
-        if(g_coop_players.tex) {
-            float k=g_coop_players.w*1.15f>806.0f?806.0f/g_coop_players.w:1.15f; /* never past the buttons */
-            ui_image(&g_coop_players,64,232,g_coop_players.w*k,g_coop_players.h*k,1.0f);
-        }
-    } else if (g_coop_players.tex) {
-        ui_image_free(&g_coop_players); /* never show a previous match's panel */
     }
     hint(!s->hint[0] ? hint_select_back()
          : input_has_controller() ? "D-PAD: NAVIGATE     A: SELECT     START: RESUME"

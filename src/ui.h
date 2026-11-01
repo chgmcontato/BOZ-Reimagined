@@ -25,7 +25,6 @@ void ui_font(int slot);
 void ui_set_reference(float w, float h);
 bool ui_image_load(struct ui_image *image, const char *path);
 void ui_image_free(struct ui_image *image);
-bool ui_capture_coop_players(struct ui_image *image);
 
 /* Brackets every frame's drawing; saves and restores the game's GL state. */
 void ui_begin(int width, int height);

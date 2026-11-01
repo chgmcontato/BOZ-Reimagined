@@ -108,6 +108,11 @@ static struct in_addr g_mdns_interface;
 static int g_mdns_interface_valid;
 static unsigned int g_callback_depth;
 static struct zero_conf_service_id *g_retired_service_ids;
+static int g_found_ipv4_after_flag;
+
+void zeroconf_set_ios_layout(int enabled) {
+    g_found_ipv4_after_flag = enabled;
+}
 
 static void mark_discovered_changed(struct zero_conf_discovered *entry) {
     if (++entry->change_sequence == 0) {
@@ -726,7 +731,13 @@ static void dispatch_found(struct zero_conf_search *search, struct zero_conf_dis
     h[0] = htons(entry->port);
     h[1] = entry->txt_count;
     w[7] = guest_txt(entry->txt, entry->txt_count, txt_strings);
-    memcpy(&w[8], entry->ipv4, 4);
+    /* iOS 1.3.5 reads an address-family flag at 0x20 (1 = IPv4) and the IPv4 address at 0x24. */
+    if (g_found_ipv4_after_flag) {
+        w[8] = 1;
+        memcpy(&w[9], entry->ipv4, 4);
+    } else {
+        memcpy(&w[8], entry->ipv4, 4);
+    }
     log_info("co-op: found '%s' at %u.%u.%u.%u:%u", entry->name, entry->ipv4[0], entry->ipv4[1],
              entry->ipv4[2], entry->ipv4[3], entry->port);
     entry->notified = 1;
@@ -968,6 +979,40 @@ static void apply_address_records(struct zero_conf_search *search,
     }
 }
 
+/*
+ * Native readers take the host address from the packet source. The phone build's mDNS never
+ * names its host in an A record (the owner is the service name), so without this its lobby never
+ * completes here. Our own multicast comes back too and must not become a lobby to join.
+ */
+static void apply_source_address(struct zero_conf_search *search,
+                                 const struct mdns_wire_packet *packet,
+                                 const struct sockaddr_in *source) {
+    if (!source || !name_matches(search->service_type, "_PROJECT_KIWI._tcp") ||
+        !name_matches(search->domain, "local")) {
+        return;
+    }
+    struct in_addr local[ZERO_CONF_MAX_INTERFACES];
+    int count = zeroconf_platform_list_ipv4(local, NULL, ZERO_CONF_MAX_INTERFACES);
+    for (int i = 0; i < count; ++i) {
+        if (local[i].s_addr == source->sin_addr.s_addr) {
+            return;
+        }
+    }
+    for (size_t i = 0; i < packet->record_count; ++i) {
+        const struct mdns_wire_record *record = &packet->records[i];
+        if (record->data_kind != MDNS_WIRE_RDATA_SRV || !record->ttl) {
+            continue;
+        }
+        struct zero_conf_discovered *entry = find_discovered(search, record->owner);
+        if (entry && entry->has_srv && !entry->has_ipv4) {
+            mark_discovered_changed(entry);
+            memcpy(entry->ipv4, &source->sin_addr.s_addr, sizeof(entry->ipv4));
+            entry->a_expires_at_ms = entry->srv_expires_at_ms;
+            entry->has_ipv4 = 1;
+        }
+    }
+}
+
 static void send_followup_queries(struct zero_conf_search *search, uint64_t now) {
     for (size_t i = 0; i < ZERO_CONF_MAX_DISCOVERED; ++i) {
         struct zero_conf_discovered *entry = &search->discovered[i];
@@ -1110,6 +1155,7 @@ void s3e_zero_conf_process_packet(const uint8_t *data, size_t data_size,
             apply_ptr_records(search, packet, now);
             apply_service_records(search, packet, now);
             apply_address_records(search, packet, now, source);
+            apply_source_address(search, packet, source);
             send_followup_queries(search, now);
             dispatch_search_changes(search);
         }

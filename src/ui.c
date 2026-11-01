@@ -232,49 +232,6 @@ void ui_image_free(struct ui_image *image) {
     }
 }
 
-bool ui_capture_coop_players(struct ui_image *image) {
-    extern uint32_t video_game_fbo(void);
-    if(video_width()!=1280 || video_height()!=720)return false;
-    void (*read_pixels)(int,int,int,int,uint32_t,uint32_t,void*)=NULL;
-    *(void **)&read_pixels=gl_proc("glReadPixels");
-    if(!read_pixels)return false;
-    /* present players only; card geometry measured on the native pause frame (1280x720):
-     * portrait x~878, the score ends at x~1218, players 167 px apart starting at y~26 */
-    enum {CX=872,CW=408,CH=120,GAP=18}; /* to the screen edge: everything the game can draw */
-    uint8_t *cards=malloc(4*CW*CH*4), *panel=calloc((CW*2+GAP)*(CH*2+GAP),4);
-    if(!cards || !panel){free(cards);free(panel);return false;}
-    int32_t previous=0,pack=4;
-    gl.GetIntegerv(0x8caa,&previous);gl.GetIntegerv(0x0d05,&pack);
-    gl.BindFramebuffer(0x8ca8,video_game_fbo());gl.PixelStorei(0x0d05,1);
-    static const int tops[]={26,193,360,527};
-    int n=0;
-#define CARD_PX(card,x,y) ((card)+((CH-1-(y))*CW+(x))*4) /* GL rows are bottom-up */
-    for(int i=0;i<4;i++) {
-        uint8_t *card=cards+n*CW*CH*4;
-        read_pixels(CX,720-tops[i]-CH,CW,CH,GL_RGBA_,GL_UNSIGNED_BYTE_,card);
-        int white=0; /* occupied = white "SCORE:" text */
-        for(int y=38;y<64;y++) for(int x=128;x<238;x++) {
-            const uint8_t *p=CARD_PX(card,x,y);
-            white+=p[0]>190&&p[1]>190&&p[2]>190;
-        }
-        if(white>30) n++;
-    }
-    int cols=n<2?n:2, rows=(n+1)/2, W=cols*CW+(cols-1)*GAP, H=rows*CH+(rows-1)*GAP;
-    for(int k=0;k<n;k++) {
-        int dx=(k%2)*(CW+GAP),dy=(k/2)*(CH+GAP);
-        for(int y=0;y<CH;y++) {
-            uint8_t *dst=panel+((dy+y)*W+dx)*4;
-            memcpy(dst,CARD_PX(cards+k*CW*CH*4,0,y),CW*4);
-            for(int x=0;x<CW;x++) dst[x*4+3]=255;
-        }
-    }
-#undef CARD_PX
-    free(cards);
-    gl.BindFramebuffer(0x8ca8,(uint32_t)previous);gl.PixelStorei(0x0d05,pack);
-    ui_image_free(image);
-    if(n>0){image->tex=make_texture(W,H,GL_RGBA_,panel);image->w=W;image->h=H;}
-    free(panel);return image->tex!=0;
-}
 
 float ui_scale(void) {
     return g_scale;
