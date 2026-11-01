@@ -5,11 +5,11 @@
 **Call of Duty: Black Ops Zombies (2012), rebuilt for big screens and controllers.**<br>
 Play on **PC (Linux & Windows)** or **Android TV**, together in co-op, from your own copy of the game.
 
-[![Release](https://img.shields.io/github/v/release/chgmcontato/boz-reimagined?style=for-the-badge&color=b91c1c)](https://github.com/chgmcontato/boz-reimagined/releases/latest)
+[![Release](https://img.shields.io/github/v/release/chgmcontato/BOZ-Reimagined?style=for-the-badge&color=b91c1c)](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20Android%20TV-1f2937?style=for-the-badge)](#-quick-start)
-[![Language](https://img.shields.io/github/languages/top/chgmcontato/boz-reimagined?style=for-the-badge&color=f5c518)](https://github.com/chgmcontato/boz-reimagined)
-[![Status](https://img.shields.io/badge/status-active-15803d?style=for-the-badge)](https://github.com/chgmcontato/boz-reimagined/commits/main)
-[![License](https://img.shields.io/github/license/chgmcontato/boz-reimagined?style=for-the-badge&color=6b7280)](LICENSE)
+[![Language](https://img.shields.io/github/languages/top/chgmcontato/BOZ-Reimagined?style=for-the-badge&color=f5c518)](https://github.com/chgmcontato/BOZ-Reimagined)
+[![Status](https://img.shields.io/badge/status-active-15803d?style=for-the-badge)](https://github.com/chgmcontato/BOZ-Reimagined/commits/main)
+[![License](https://img.shields.io/github/license/chgmcontato/BOZ-Reimagined?style=for-the-badge&color=6b7280)](LICENSE)
 
 **English** · [Português](README.pt-BR.md)
 
@@ -102,7 +102,7 @@ Play on **PC (Linux & Windows)** or **Android TV**, together in co-op, from your
 
 ### 🖥️ PC: prebuilt
 
-1. Download from [**Releases**](https://github.com/chgmcontato/boz-reimagined/releases/latest):
+1. Download from [**Releases**](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest):
    - **Windows 10/11:** `codboz-pc-windows-x64.zip` (one `.exe`, no extra DLLs)
    - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (needs SDL2 and glibc 2.39+)
 2. Run it. In the launcher: **Install APK** (or **Install IPA**) → **Choose** (Game data) → **PLAY**.
@@ -118,7 +118,7 @@ Data and saves live in `game/`, next to the executable.
 ### 🖥️ PC: build from source
 
 ```bash
-git clone --recursive https://github.com/chgmcontato/boz-reimagined.git
+git clone --recursive https://github.com/chgmcontato/BOZ-Reimagined.git
 cd boz-reimagined
 
 # Linux (needs SDL2 dev files, CMake and Boost headers)
@@ -232,7 +232,7 @@ On the pause screen, T toggles the match timer. F11: fullscreen. F3: FPS counter
 
 Bug reports and ideas are welcome:
 
-- 🐛 **Found a bug?** [Open an issue](https://github.com/chgmcontato/boz-reimagined/issues) with the **platform**, **map**, **round** and a **screenshot**.
+- 🐛 **Found a bug?** [Open an issue](https://github.com/chgmcontato/BOZ-Reimagined/issues) with the **platform**, **map**, **round** and a **screenshot**.
 - 🔧 **Want to code?** Fork, branch from `main`, and open a pull request with a short description and how you tested it.
 - ⚠️ Never commit game files (APK, OBB, IPA, `.s3e`, extracted assets).
 
