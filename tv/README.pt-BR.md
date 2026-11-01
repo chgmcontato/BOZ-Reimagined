@@ -85,7 +85,7 @@ Você precisa do APK e do OBB originais (tabela acima), de um PC com `adb` e `xd
    APK original e transforma esse APK no APK do Reimagined.
 3. Rode:
    ```bash
-   bash instalar.sh <IP-da-TV> base.apk blackops_etc.dz boz-reimagined-v0.1.xdelta
+   bash instalar.sh <IP-da-TV> base.apk blackops_etc.dz boz-reimagined-tv-v0.2.xdelta
    ```
    O script confere os hashes, aplica o patch, instala o APK e copia o OBB para
    `/storage/emulated/0/Android/obb/com.activision.boz/`. Na primeira vez, a TV pode pedir para autorizar o PC.
