@@ -8,6 +8,12 @@ int zeroconf_platform_send(int fd, const uint8_t *packet, size_t size,
     assert(size <= sizeof(captured));
     memcpy(captured, packet, size); captured_size = size; return 1;
 }
+int zeroconf_platform_list_ipv4(struct in_addr *a, struct in_addr *m, int n) {
+    (void)a; (void)m; (void)n; return 0; /* no interfaces: falls back to the publisher address */
+}
+int zeroconf_platform_set_multicast_interface(int fd, struct in_addr a) {
+    (void)fd; (void)a; return 1;
+}
 int main(void) {
     struct zero_conf_search search = {0};
     strcpy(search.service_type, "_PROJECT_KIWI._tcp");

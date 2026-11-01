@@ -308,9 +308,27 @@ static void make_host_label(char output[64]) {
     snprintf(output, 64, "codboz-%s-%lx", sanitized, (unsigned long)((uint32_t)getpid() & 0xffffu));
 }
 
+enum { ZERO_CONF_MAX_INTERFACES = 16 };
+
+/* Multicast goes out on every interface; a unicast reply needs no interface choice. */
 static int send_packet_to(const uint8_t *packet, size_t packet_size,
                           const struct sockaddr_in *destination) {
-    return zeroconf_platform_send(g_mdns_fd, packet, packet_size, destination);
+    if (destination) {
+        return zeroconf_platform_send(g_mdns_fd, packet, packet_size, destination);
+    }
+    struct in_addr interfaces[ZERO_CONF_MAX_INTERFACES];
+    int count = zeroconf_platform_list_ipv4(interfaces, NULL, ZERO_CONF_MAX_INTERFACES);
+    if (count <= 0) {
+        return zeroconf_platform_send(g_mdns_fd, packet, packet_size, NULL);
+    }
+    int sent = 0;
+    for (int i = 0; i < count; ++i) {
+        if (zeroconf_platform_set_multicast_interface(g_mdns_fd, interfaces[i]) &&
+            zeroconf_platform_send(g_mdns_fd, packet, packet_size, NULL)) {
+            sent = 1;
+        }
+    }
+    return sent;
 }
 
 static int send_record_query(const char *name, uint16_t type) {
@@ -344,8 +362,8 @@ static void mark_publisher_txt_announced(struct zero_conf_publisher *publisher) 
     publisher->txt_update_due_ms = 0;
 }
 
-static int send_publication(struct zero_conf_publisher *publisher, int goodbye,
-                            const struct sockaddr_in *destination) {
+static int send_publication_with(struct zero_conf_publisher *publisher, int goodbye,
+                                 const struct sockaddr_in *destination, const uint8_t ipv4[4]) {
     struct mdns_wire_txt_string txt[ZERO_CONF_MAX_TXT_RECORDS];
     publisher_txt_views(publisher, txt);
     struct mdns_wire_service service = {
@@ -357,7 +375,7 @@ static int send_publication(struct zero_conf_publisher *publisher, int goodbye,
         .txt = txt,
         .txt_count = publisher->txt_count,
     };
-    memcpy(service.ipv4, publisher->ipv4, sizeof(service.ipv4));
+    memcpy(service.ipv4, ipv4, sizeof(service.ipv4));
     /* Match the native Android BOZ wire convention for the SRV port: Marmalade's mDNS writes
      * htons() of the game's raw network-order port, and its reader ntohs() it back before the
      * game copies it into a network-order address. The A record is NOT reversed: the native
@@ -377,10 +395,42 @@ static int send_publication(struct zero_conf_publisher *publisher, int goodbye,
     size_t packet_size = 0;
     enum mdns_wire_status status =
         mdns_wire_build_service_response(packet, sizeof(packet), &service, &options, &packet_size);
-    if (status != MDNS_WIRE_OK || !send_packet_to(packet, packet_size, destination)) {
+    if (status != MDNS_WIRE_OK) {
         return 0;
     }
-    return 1;
+    return zeroconf_platform_send(g_mdns_fd, packet, packet_size, destination);
+}
+
+/*
+ * Each interface announces its own address in the A record: the TV may browse on another
+ * network than the first one (seen with a ZeroTier interface), and must get an address it can
+ * reach there. A unicast reply carries the address on the asker's subnet.
+ */
+static int send_publication(struct zero_conf_publisher *publisher, int goodbye,
+                            const struct sockaddr_in *destination) {
+    struct in_addr addresses[ZERO_CONF_MAX_INTERFACES], netmasks[ZERO_CONF_MAX_INTERFACES];
+    int count = zeroconf_platform_list_ipv4(addresses, netmasks, ZERO_CONF_MAX_INTERFACES);
+    if (destination) {
+        const uint8_t *ipv4 = publisher->ipv4;
+        for (int i = 0; i < count; ++i) {
+            if (((addresses[i].s_addr ^ destination->sin_addr.s_addr) & netmasks[i].s_addr) == 0) {
+                ipv4 = (const uint8_t *)&addresses[i].s_addr;
+                break;
+            }
+        }
+        return send_publication_with(publisher, goodbye, destination, ipv4);
+    }
+    if (count <= 0) {
+        return send_publication_with(publisher, goodbye, NULL, publisher->ipv4);
+    }
+    int sent = 0;
+    for (int i = 0; i < count; ++i) {
+        if (zeroconf_platform_set_multicast_interface(g_mdns_fd, addresses[i]) &&
+            send_publication_with(publisher, goodbye, NULL, (const uint8_t *)&addresses[i].s_addr)) {
+            sent = 1;
+        }
+    }
+    return sent;
 }
 
 static int copy_txt_records(char target[ZERO_CONF_MAX_TXT_RECORDS][ZERO_CONF_TXT_RECORD_SIZE],
