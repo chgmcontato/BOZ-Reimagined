@@ -114,6 +114,7 @@ $(BUILD_DIR)/third_party/%.o: third_party/%.c
 	$(CC) -std=gnu11 -O2 -D_7ZIP_ST -c $< -o $@
 
 $(TARGET): $(OBJ) $(DYN_LIBS)
+	@if [ -f $@ ]; then cp -f $@ $@.bak; fi # exactly one backup: the previous build
 	$(LINK) $(PROJECT_LDFLAGS) $(LTO_LDFLAGS) -march=x86-64-v2 $(LDFLAGS) -o $@ $(OBJ) $(DYN_LIBS) $(SDL_LIBS) -lm
 
 # SDL2's official MinGW development package, for PLATFORM=windows.

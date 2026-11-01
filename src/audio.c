@@ -21,6 +21,7 @@ enum {
     SOUND_FREQUENCY = 22050,
     SOUND_RATE_MAX = 0x40000,
     GENERATOR_CHUNK = 4096,
+    MUSIC_BUFFER_FRAMES = 2048,
     GENERATOR_MAX_SAMPLES = 22050 * 60 * 4,
     S3E_CHANNEL_END_SAMPLE = 0,
     S3E_CHANNEL_GEN_AUDIO = 1,
@@ -66,7 +67,12 @@ struct music_channel {
     int finished;
     uint32_t repeat; /* 0 = forever */
     int volume;
-    int16_t carry[2];
+    int16_t buffer[MUSIC_BUFFER_FRAMES * 2];
+    uint32_t buffer_frames, buffer_pos;
+    int empty_reads;
+    uint64_t pos; /* 32.32 position between prev and next */
+    int16_t prev[2], next[2];
+    int primed;
 };
 
 static SDL_AudioDeviceID g_device;
@@ -126,43 +132,71 @@ static void mix_sound(int32_t *out, int frames) {
     }
 }
 
+/* Next decoded frame as stereo; false at the end of the file (no more repeats). */
+static bool music_next_frame(struct music_channel *m, int16_t frame[2]) {
+    int channels = (int)m->mp3.channels;
+    while (m->buffer_pos >= m->buffer_frames) {
+        drmp3_uint64 got = drmp3_read_pcm_frames_s16(&m->mp3, MUSIC_BUFFER_FRAMES, m->buffer);
+        if (got == 0) {
+            if (m->repeat == 1) {
+                return false;
+            }
+            if (m->repeat > 1) {
+                m->repeat--;
+            }
+            if (m->empty_reads++ > 0 || !drmp3_seek_to_pcm_frame(&m->mp3, 0)) {
+                return false; /* undecodable: do not spin in the audio thread */
+            }
+            continue;
+        }
+        m->empty_reads = 0;
+        m->buffer_frames = (uint32_t)got;
+        m->buffer_pos = 0;
+    }
+    const int16_t *in = m->buffer + m->buffer_pos++ * (uint32_t)channels;
+    frame[0] = in[0];
+    frame[1] = channels > 1 ? in[1] : in[0];
+    return true;
+}
+
+/* The game ships 16 kHz and 48 kHz files: resample to the output rate (linear). */
 static void mix_music(int32_t *out, int frames) {
     for (int c = 0; c < AUDIO_CHANNELS; ++c) {
         struct music_channel *m = &g_music[c];
         if (!m->open || m->paused || m->finished) {
             continue;
         }
-        int16_t buffer[2048 * 2];
-        int done = 0;
-        int channels = (int)m->mp3.channels;
         uint32_t rate = m->mp3.sampleRate ? m->mp3.sampleRate : OUTPUT_RATE;
-        while (done < frames) {
-            int want = frames - done;
-            /* only 44.1 kHz and 22.05 kHz files ship with the game */
-            int ratio = rate == OUTPUT_RATE / 2 ? 2 : 1;
-            int src_frames = (want + ratio - 1) / ratio;
-            if (src_frames > 2048) {
-                src_frames = 2048;
-            }
-            drmp3_uint64 got = drmp3_read_pcm_frames_s16(&m->mp3, (drmp3_uint64)src_frames, buffer);
-            if (got == 0) {
-                if (m->repeat == 1) {
-                    m->finished = 1;
-                    break;
-                }
-                if (m->repeat > 1) {
-                    m->repeat--;
-                }
-                drmp3_seek_to_pcm_frame(&m->mp3, 0);
+        uint64_t step = ((uint64_t)rate << 32) / OUTPUT_RATE;
+        if (!m->primed) {
+            if (!music_next_frame(m, m->next)) {
+                m->finished = 1;
                 continue;
             }
-            for (drmp3_uint64 i = 0; i < got; ++i) {
-                int16_t l = buffer[i * (drmp3_uint64)channels];
-                int16_t r = channels > 1 ? buffer[i * (drmp3_uint64)channels + 1] : l;
-                for (int k = 0; k < ratio && done < frames; ++k, ++done) {
-                    out[done * 2] += l * m->volume / S3E_MAX_VOLUME;
-                    out[done * 2 + 1] += r * m->volume / S3E_MAX_VOLUME;
+            m->prev[0] = m->next[0];
+            m->prev[1] = m->next[1];
+            m->primed = 1;
+        }
+        for (int i = 0; i < frames; ++i) {
+            int32_t frac = (int32_t)(m->pos >> 16);
+            int32_t l = m->prev[0] + (((m->next[0] - m->prev[0]) * frac) >> 16);
+            int32_t r = m->prev[1] + (((m->next[1] - m->prev[1]) * frac) >> 16);
+            out[i * 2] += l * m->volume / S3E_MAX_VOLUME;
+            out[i * 2 + 1] += r * m->volume / S3E_MAX_VOLUME;
+            m->pos += step;
+            bool ended = false;
+            while (m->pos >> 32) {
+                m->pos -= (uint64_t)1 << 32;
+                m->prev[0] = m->next[0];
+                m->prev[1] = m->next[1];
+                if (!music_next_frame(m, m->next)) {
+                    ended = true;
+                    break;
                 }
+            }
+            if (ended) {
+                m->finished = 1;
+                break;
             }
         }
     }
@@ -421,6 +455,10 @@ static int music_play(uint8_t *data, uint32_t size, uint32_t repeat) {
     m->repeat = repeat;
     m->finished = 0;
     m->paused = 0;
+    m->buffer_frames = m->buffer_pos = 0;
+    m->empty_reads = 0;
+    m->pos = 0;
+    m->primed = 0;
     m->open = 1;
     unlock();
     return 0;
