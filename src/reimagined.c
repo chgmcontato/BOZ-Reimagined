@@ -440,6 +440,49 @@ void reimagined_frame(void) {
     }
 }
 
+/* Co-op "player dropped" card, in the menus' comic style: ink panel, red title strip, paper text. */
+static void draw_coop_pause(void) {
+    static uint64_t since;
+    static uint32_t since_session;
+    uint64_t now = monotonic_ms();
+    if (since_session != g_coop_pause.session || !since) {
+        since_session = g_coop_pause.session;
+        since = now;
+    }
+    const uint32_t paper = 0xfff2eee4u, ink = 0xff151211u, red = 0xff791d24u, edge = 0xff827763u,
+                   muted = 0xffbcb8adu;
+    ui_rect(0, 0, 1280, 720, 0x99000000u);
+    const float x = 330, y = 230, w = 620, h = 250;
+    float panel[8] = {x, y + 8, x + w, y, x + w - 4, y + h - 6, x + 3, y + h};
+    ui_quad(panel, ink);
+    ui_quad_outline(panel, 5, ink);
+    ui_quad_outline(panel, 1.5f, edge);
+    float strip[8] = {x + 24, y + 30, x + w - 30, y + 22, x + w - 34, y + 84, x + 22, y + 90};
+    ui_quad(strip, red);
+    ui_font(UI_FONT_DISPLAY);
+    ui_label("MATCH PAUSED", 640, y + 72, 40, paper, UI_CENTER);
+
+    /* centred on the text without the dots, so the line doesn't shift as they animate */
+    static const char *const dots[4] = {"", ".", "..", "..."};
+    const char *waiting = "WAITING FOR A PLAYER TO RECONNECT";
+    float left = 640 - ui_text_width(waiting, 24) / 2;
+    float end = left + ui_label(waiting, left, y + 138, 24, paper, UI_LEFT);
+    ui_label(dots[(now / 400) % 4], end, y + 138, 24, paper, UI_LEFT);
+
+    char line[96];
+    int present = g_coop_pause.peers + 1, expected = g_coop_pause.peak + 1;
+    if (expected <= present) {
+        expected = present + 1; /* preview, or the count was not read yet */
+    }
+    unsigned waited = (unsigned)((now - since) / 1000u);
+    snprintf(line, sizeof(line), "PLAYERS %d / %d     WAITING %u:%02u", present, expected,
+             waited / 60u, waited % 60u);
+    ui_font(UI_FONT_BODY);
+    ui_label(line, 640, y + 182, 22, 0xfff5c518u, UI_CENTER);
+    ui_label("The match resumes on its own when everyone is back.", 640, y + 220, 18, muted,
+             UI_CENTER);
+}
+
 void reimagined_draw(void) {
     if (!g_enabled || !timer_valid()) {
         return;
@@ -450,9 +493,16 @@ void reimagined_draw(void) {
     uint64_t elapsed = (uint64_t)rd(t + 12) | ((uint64_t)rd(t + 16) << 32);
     uint64_t total = (uint64_t)(rd(t + 20) & 0x7fffffffu) * 1000u + rd(t + 24);
     char text[32];
-    if (active && !screen && g_coop_pause.waiting) {
-        ui_rect(180,280,920,130,0xe6101010u);
-        ui_text("MATCH PAUSED - WAITING FOR PLAYER",640,350,28,0xffffffffu,UI_CENTER);
+    static int preview = -1;
+    if (preview < 0) {
+        const char *env = getenv("CODBOZ_PREVIEW_COOP_PAUSE"); /* debug: show the card in any match */
+        preview = env && *env == '1';
+        if (preview) {
+            g_coop_pause.peak = 1;
+        }
+    }
+    if (active && !screen && (g_coop_pause.waiting || preview)) {
+        draw_coop_pause();
     }
     if (active && !screen) {
         draw_grenades();
