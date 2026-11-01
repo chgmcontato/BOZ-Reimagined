@@ -45,6 +45,9 @@ final class Cursor {
     private boolean m_Ticking;
     private long m_TouchDownTime = -1;
     private long m_LastTap = -1;
+    private static final long CONFIRM_COOLDOWN_MS = 200;
+    private long m_NextConfirmAt;
+    private boolean m_SwallowConfirmUp;
     private final Menus m_Menus;
     private final NameEditor m_Names;
     private int m_StickDir = -1;        // direção atual do analógico no modo foco (-1 = centro)
@@ -137,6 +140,18 @@ final class Cursor {
         if (press && SystemClock.uptimeMillis() < m_SettleUntil && (code == KeyEvent.KEYCODE_BUTTON_A
                 || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_BUTTON_B))
             return true;                    // tela recém-chegada: o SWF ainda anima a entrada e ignora toques
+        if ((code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_DPAD_CENTER) && e.getRepeatCount() == 0) {
+            // Mesmo debounce do PC (input.c, MENU_CLICK_COOLDOWN_MS): um segundo A em < 200 ms é descartado,
+            // e o soltar dele também, para não chegar um UP órfão ao jogo.
+            if (press) {
+                long now = SystemClock.uptimeMillis();
+                if (now < m_NextConfirmAt) { m_SwallowConfirmUp = true; return true; }
+                m_NextConfirmAt = now + CONFIRM_COOLDOWN_MS;
+            } else if (m_SwallowConfirmUp) {
+                m_SwallowConfirmUp = false;
+                return true;
+            }
+        }
         if (m_SelectionEntry && (code == KeyEvent.KEYCODE_BUTTON_A
                 || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_BUTTON_B
                 || code == KeyEvent.KEYCODE_BUTTON_START
