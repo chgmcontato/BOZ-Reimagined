@@ -2,6 +2,10 @@
 #include "host.h"
 #include "gl_state.h"
 
+/* draws with the depth test on: screens.c tells a 3D scene from a flat menu */
+static unsigned gl_depth_test_on;
+unsigned gl_depth_draws;
+
 typedef void (*gl_any)(void);
 
 static void gl_glActiveShaderProgram(void) {
@@ -446,6 +450,7 @@ static void gl_glDisable(void) {
         *(void **)&fn = gl_proc("glDisable");
     }
     fn(arg(0));
+    if (arg(0) == 0x0b71) gl_depth_test_on = 0;
 }
 
 static void gl_glDisableClientState(void) {
@@ -470,6 +475,7 @@ static void gl_glDrawArrays(void) {
         *(void **)&fn = gl_proc("glDrawArrays");
     }
     fn(arg(0), (int32_t)arg(1), (int32_t)arg(2));
+    gl_depth_draws += gl_depth_test_on;
 }
 
 static void gl_glDrawBuffers(void) {
@@ -486,6 +492,7 @@ static void gl_glDrawElements(void) {
         *(void **)&fn = gl_proc("glDrawElements");
     }
     fn(arg(0), (int32_t)arg(1), arg(2), G2H(arg(3)));
+    gl_depth_draws += gl_depth_test_on;
 }
 
 static void gl_glEnable(void) {
@@ -494,6 +501,7 @@ static void gl_glEnable(void) {
         *(void **)&fn = gl_proc("glEnable");
     }
     fn(arg(0));
+    if (arg(0) == 0x0b71) gl_depth_test_on = 1;
 }
 
 static void gl_glEnableClientState(void) {

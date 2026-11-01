@@ -483,11 +483,38 @@ static void draw_settings(void) {
     bool changed = false;
     float y = 86;
 
-    row(y, TR("Tela", "Display"), TR("Tela cheia usa a resolução do monitor, sem bordas", "Fullscreen uses the monitor's resolution, borderless"));
+    row(y, TR("Tela", "Display"), TR("Tela cheia ocupa o monitor, sem bordas", "Fullscreen fills the monitor, borderless"));
     const char *const screens[] = {TR("Tela cheia", "Fullscreen"), TR("Janela", "Window")};
     int fs = segmented(cx - 240, y + 6, 240, 32, screens, 2, g_opt.fullscreen ? 0 : 1);
     changed |= (fs == 0) != g_opt.fullscreen;
     g_opt.fullscreen = fs == 0;
+    y += 44;
+
+    row(y, TR("Resolução", "Resolution"),
+        g_opt.fullscreen ? TR("Do jogo; a tela cheia escala para o monitor", "Game image; fullscreen scales it to the monitor")
+                         : TR("Da imagem do jogo e do tamanho da janela", "Game image and window size"));
+    static const int sizes[][2] = {{1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}};
+    static const char *const all_size_names[] = {"1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440"};
+    const char *size_names[5];
+    int size_map[5], size_count = 0, size_cur = -1;
+    SDL_DisplayMode desktop;
+    bool known = SDL_GetDesktopDisplayMode(0, &desktop) == 0;
+    for (int i = 0; i < 5; ++i) {
+        if (i == 0 || !known || (sizes[i][0] <= desktop.w && sizes[i][1] <= desktop.h)) {
+            if (sizes[i][0] == g_opt.width && sizes[i][1] == g_opt.height) {
+                size_cur = size_count;
+            }
+            size_names[size_count] = all_size_names[i];
+            size_map[size_count++] = i;
+        }
+    }
+    float size_w = size_count >= 4 ? 400 : 100.0f * (float)size_count;
+    int picked_size = segmented(cx - size_w, y + 6, size_w, 32, size_names, size_count, size_cur);
+    if (picked_size >= 0 && picked_size != size_cur) {
+        g_opt.width = sizes[size_map[picked_size]][0];
+        g_opt.height = sizes[size_map[picked_size]][1];
+        changed = true;
+    }
     y += 44;
 
     row(y, TR("Sincronia vertical", "Vertical sync"), TR("Sem tearing; usa a taxa do monitor", "No tearing; follows the monitor's refresh rate"));
@@ -550,6 +577,8 @@ static void draw_settings(void) {
 
     if (button(x, y, 180, 36, TR("Restaurar padrões", "Reset to defaults"), false, true)) {
         g_opt.fullscreen = true;
+        g_opt.width = 1280;
+        g_opt.height = 720;
         g_opt.vsync = true;
         g_opt.fps_limit = 0;
         g_opt.show_fps = false;

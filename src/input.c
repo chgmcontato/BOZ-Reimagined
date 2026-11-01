@@ -345,6 +345,50 @@ static void tap_update(void) {
     }
 }
 
+/*
+ * iOS build: its Xperia table has no plain reload (reloadChangeWeapon swaps the weapon) and its
+ * grenade command doesn't throw, so these actions call the HUD buttons' own handlers
+ * (registered by name at 0x4a0afb32 and 0x4a0afb92/b2). They ignore their arguments.
+ */
+enum {
+    IOS_HUD_RELOAD = 0x4a0aeb6d,
+    IOS_HUD_HOLD_GRENADE = 0x4a0aec3d,
+    IOS_HUD_THROW_GRENADE = 0x4a0aec8d,
+};
+
+static void ios_hud_call(uint32_t handler) {
+    guest_call3(handler, 0, 0, 0);
+}
+
+/*
+ * iOS build: there is no claymore key, and a grenade type is swapped by double-tapping its HUD icon.
+ * The claymore binding plays that gesture on the icon.
+ */
+enum { SWAP_ICON_X = 1210, SWAP_ICON_Y = 355, SWAP_STEP_MS = 70 };
+static int g_swap_step; /* 0 idle, then position, down, up, down, up */
+static uint64_t g_swap_at;
+
+static void grenade_swap_start(void) {
+    if (!g_swap_step && !g_tap_release_at && !g_mouse_touch_active) {
+        g_swap_step = 1;
+        g_swap_at = 0;
+    }
+}
+
+static void grenade_swap_update(void) {
+    uint64_t now = monotonic_ms();
+    if (!g_swap_step || now < g_swap_at) {
+        return;
+    }
+    if (g_swap_step == 1) {
+        pointer_motion(SWAP_ICON_X * video_width() / 1280, SWAP_ICON_Y * video_height() / 720);
+    } else {
+        pointer_button(g_swap_step % 2 == 0);
+    }
+    g_swap_at = now + SWAP_STEP_MS;
+    g_swap_step = g_swap_step == 5 ? 0 : g_swap_step + 1;
+}
+
 /* ---- Xperia touchpads ---- */
 
 static void pad_button(uint32_t id, int pressed) {
@@ -533,6 +577,9 @@ static int wants_capture(void) {
         }
         if (reimagined_patched()) {
             return reimagined_match_active();
+        }
+        if (g_native_pause_mode) {
+            return screens_scene_stable(); /* most iOS menus match no probe: trust the 3D scene */
         }
         return leads_to_game(screens_last_known()) &&
                monotonic_ms() - screens_changed_ms() > 1000;
@@ -972,6 +1019,27 @@ static void update_gameplay(float dt) {
     if (!look_hold) {
         g_mouse_dx = g_mouse_dy = 0;
     }
+    if (g_captured && !look_hold && !deadops && !g_opt.mouse_drag && getenv("CODBOZ_PERF")) {
+        /* how much of the mouse the stick's +-1 range throws away */
+        static float wanted, kept;
+        static int frames, clipped;
+        static uint64_t next_ms;
+        float cx = g_look_x < -1 ? -1 : g_look_x > 1 ? 1 : g_look_x;
+        wanted += fabsf(g_look_x);
+        kept += fabsf(cx);
+        frames++;
+        clipped += fabsf(g_look_x) > 1;
+        uint64_t now_ms = monotonic_ms();
+        if (now_ms >= next_ms) {
+            if (wanted > 0.5f) {
+                log_info("perf: look wanted %.1f kept %.1f (%.0f%%), clipped %d/%d frames", wanted,
+                         kept, kept * 100.0f / wanted, clipped, frames);
+            }
+            wanted = kept = 0;
+            frames = clipped = 0;
+            next_ms = now_ms + 1000;
+        }
+    }
     if (!lx && !ly) {
         lx = g_look_x < -1 ? -1 : g_look_x > 1 ? 1 : g_look_x;
         ly = g_look_y < -1 ? -1 : g_look_y > 1 ? 1 : g_look_y;
@@ -1032,6 +1100,26 @@ static void update_gameplay(float dt) {
             (bindings_down(BIND_NUKE, true, g_controller) || bindings_down(BIND_BOOST, true, g_controller))) {
             down = 0; /* buttons the nuke/boost share with the FPS maps' melee/grenade */
         }
+        if ((a == BIND_RELOAD || a == BIND_GRENADE) && g_native_pause_mode) {
+            if (down != last[a] && (g_captured || !down)) {
+                if (a == BIND_RELOAD) {
+                    if (down) {
+                        ios_hud_call(IOS_HUD_RELOAD);
+                    }
+                } else {
+                    ios_hud_call(down ? IOS_HUD_HOLD_GRENADE : IOS_HUD_THROW_GRENADE);
+                }
+            }
+            last[a] = down;
+            continue;
+        }
+        if (a == BIND_CLAYMORE && g_native_pause_mode) {
+            if (down && !last[a] && g_captured) {
+                grenade_swap_start();
+            }
+            last[a] = down;
+            continue;
+        }
         if (down != last[a]) {
             key_set(k_action_key[a], down);
             last[a] = down;
@@ -1072,6 +1160,7 @@ void input_pump(void) {
     }
     mouse_touch_update();
     tap_update();
+    grenade_swap_update();
     if (g_script_count) {
         script_run();
     }

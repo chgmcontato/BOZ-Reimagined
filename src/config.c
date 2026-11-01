@@ -207,7 +207,7 @@ void settings_save(void) {
     }
     fprintf(file,
             "# Call of Duty: Black Ops Zombies - PC settings\n"
-            "# fullscreen=1: borderless at the monitor's resolution (width/height ignored)\n"
+            "# width/height: game image size; fullscreen=1 scales it to the monitor, borderless\n"
             "fullscreen=%d\nwidth=%d\nheight=%d\nvsync=%d\nfps_limit=%d\nshow_fps=%d\n"
             "mouse_sensitivity=%.2f\nmouse_y_scale=%.2f\ninvert_y=%d\nmouse_look=%s\nlanguage=%s\nplayer_name=%s\n",
             g_opt.fullscreen, g_opt.width, g_opt.height, g_opt.vsync, g_opt.fps_limit,
@@ -257,7 +257,7 @@ static const char k_default_settings[] =
     "# Call of Duty: Black Ops Zombies - PC settings\n"
     "width=1280\n"
     "height=720\n"
-    "# fullscreen=1: borderless at the monitor's resolution (width/height ignored)\n"
+    "# width/height: game image size; fullscreen=1 scales it to the monitor, borderless\n"
     "fullscreen=1\n"
     "vsync=1\n"
     "fps_limit=0\n"
