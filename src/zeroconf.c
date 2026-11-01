@@ -362,6 +362,106 @@ static void mark_publisher_txt_announced(struct zero_conf_publisher *publisher) 
     publisher->txt_update_due_ms = 0;
 }
 
+/*
+ * The response exactly as the native Android BOZ writes it (captured from the TV): flags 0x8400,
+ * PTR, SRV and TXT all in the answer section, uncompressed names, cache-flush class, TTL 3600 and
+ * no A record (native readers take the address from the packet source). A TV ignored the usual
+ * PTR-answer + SRV/TXT/A-additional layout with compressed names and opened its own lobby.
+ */
+static int put_name(uint8_t *out, size_t cap, size_t *at, const char *name) {
+    while (*name) {
+        const char *dot = strchr(name, '.');
+        size_t len = dot ? (size_t)(dot - name) : strlen(name);
+        if (len == 0 || len > 63 || *at + 1 + len >= cap) {
+            return 0;
+        }
+        out[(*at)++] = (uint8_t)len;
+        memcpy(out + *at, name, len);
+        *at += len;
+        name += len;
+        if (*name == '.') {
+            ++name;
+        }
+    }
+    if (*at >= cap) {
+        return 0;
+    }
+    out[(*at)++] = 0;
+    return 1;
+}
+
+static int put_u16(uint8_t *out, size_t cap, size_t *at, uint16_t v) {
+    if (*at + 2 > cap) return 0;
+    out[(*at)++] = (uint8_t)(v >> 8);
+    out[(*at)++] = (uint8_t)v;
+    return 1;
+}
+
+static int put_u32(uint8_t *out, size_t cap, size_t *at, uint32_t v) {
+    return put_u16(out, cap, at, (uint16_t)(v >> 16)) && put_u16(out, cap, at, (uint16_t)v);
+}
+
+/* Owner, type, class, TTL; returns the offset of the rdlength field (0 on overflow). */
+static size_t put_record_head(uint8_t *out, size_t cap, size_t *at, const char *owner,
+                              uint16_t type, uint32_t ttl) {
+    if (!put_name(out, cap, at, owner) || !put_u16(out, cap, at, type) ||
+        !put_u16(out, cap, at, 0x8001) || !put_u32(out, cap, at, ttl)) {
+        return 0;
+    }
+    size_t rdlen_at = *at;
+    return put_u16(out, cap, at, 0) ? rdlen_at : 0;
+}
+
+static void end_record(uint8_t *out, size_t rdlen_at, size_t at) {
+    uint16_t len = (uint16_t)(at - rdlen_at - 2);
+    out[rdlen_at] = (uint8_t)(len >> 8);
+    out[rdlen_at + 1] = (uint8_t)len;
+}
+
+static size_t build_native_kiwi_response(const struct zero_conf_publisher *publisher, int goodbye,
+                                         uint8_t *out, size_t cap) {
+    uint32_t ttl = goodbye ? 0 : 3600;
+    size_t at = 0, r;
+    if (!put_u16(out, cap, &at, 0) || !put_u16(out, cap, &at, 0x8400) ||
+        !put_u16(out, cap, &at, 0) || !put_u16(out, cap, &at, 3) ||
+        !put_u16(out, cap, &at, 0) || !put_u16(out, cap, &at, 0)) {
+        return 0;
+    }
+    /* PTR service -> instance */
+    if (!(r = put_record_head(out, cap, &at, publisher->service_fqdn, MDNS_WIRE_TYPE_PTR, ttl)) ||
+        !put_name(out, cap, &at, publisher->instance_fqdn)) {
+        return 0;
+    }
+    end_record(out, r, at);
+    /* SRV: priority 0, weight 0, port in the native byte-swapped convention, host */
+    if (!(r = put_record_head(out, cap, &at, publisher->instance_fqdn, MDNS_WIRE_TYPE_SRV, ttl)) ||
+        !put_u16(out, cap, &at, 0) || !put_u16(out, cap, &at, 0) ||
+        !put_u16(out, cap, &at, htons(publisher->port)) ||
+        !put_name(out, cap, &at, publisher->host_fqdn)) {
+        return 0;
+    }
+    end_record(out, r, at);
+    /* TXT */
+    if (!(r = put_record_head(out, cap, &at, publisher->instance_fqdn, MDNS_WIRE_TYPE_TXT, ttl))) {
+        return 0;
+    }
+    for (uint16_t i = 0; i < publisher->txt_count; ++i) {
+        size_t len = strlen(publisher->txt[i]);
+        if (len > 255 || at + 1 + len > cap) {
+            return 0;
+        }
+        out[at++] = (uint8_t)len;
+        memcpy(out + at, publisher->txt[i], len);
+        at += len;
+    }
+    if (!publisher->txt_count) {
+        if (at >= cap) return 0;
+        out[at++] = 0;
+    }
+    end_record(out, r, at);
+    return at;
+}
+
 static int send_publication_with(struct zero_conf_publisher *publisher, int goodbye,
                                  const struct sockaddr_in *destination, const uint8_t ipv4[4]) {
     struct mdns_wire_txt_string txt[ZERO_CONF_MAX_TXT_RECORDS];
@@ -383,7 +483,10 @@ static int send_publication_with(struct zero_conf_publisher *publisher, int good
      * so a reversed A sends the TV to a non-existent host and it opens its own lobby. */
     if (name_matches(publisher->service_type, "_PROJECT_KIWI._tcp") &&
         name_matches(publisher->domain, "local")) {
-        service.port = htons(service.port);
+        uint8_t native[ZERO_CONF_PACKET_SIZE];
+        size_t native_size =
+            build_native_kiwi_response(publisher, goodbye, native, sizeof(native));
+        return native_size && zeroconf_platform_send(g_mdns_fd, native, native_size, destination);
     }
     struct mdns_wire_response_options options = {
         .header_flags = MDNS_WIRE_RESPONSE_FLAGS,

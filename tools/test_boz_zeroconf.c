@@ -50,21 +50,28 @@ int main(void) {
     strcpy(publisher.service_type, "_PROJECT_KIWI._tcp");
     strcpy(publisher.domain, "local");strcpy(publisher.name, "kino_0");
     strcpy(publisher.host, "test-pc");publisher.port = 49960;
+    strcpy(publisher.service_fqdn, "_PROJECT_KIWI._tcp.local");
+    strcpy(publisher.instance_fqdn, "kino_0._PROJECT_KIWI._tcp.local");
+    strcpy(publisher.host_fqdn, "test-pc.local");
+    strcpy(publisher.txt[0], "kino_0");publisher.txt_count = 1;
     memcpy(publisher.ipv4, correct, 4);g_mdns_fd = 1;
     assert(send_publication(&publisher, 0, NULL));
     assert(mdns_wire_parse_packet(captured, captured_size, &packet) == MDNS_WIRE_OK);
-    int a = 0, srv = 0;
+    int a = 0, srv = 0, txt = 0;
+    assert(packet.flags == 0x8400 && packet.question_count == 0);
     for (size_t i = 0; i < packet.record_count; ++i) {
         r = &packet.records[i];
         if (r->data_kind == MDNS_WIRE_RDATA_SRV) {
             assert(r->data.srv.port == 10435);srv++;
         }
-        if (r->data_kind == MDNS_WIRE_RDATA_A) {
-            assert(memcmp(r->data.a.address, correct, 4) == 0);a++;
-        }
+        if (r->data_kind == MDNS_WIRE_RDATA_A) a++;
+        if (r->data_kind == MDNS_WIRE_RDATA_TXT) txt++;
     }
+    /* native layout: PTR+SRV+TXT answers, no A record, uncompressed (no 0xc0 pointers) */
+    assert(packet.record_count == 3 && !a && txt);
+    a = 1;
     assert(a && srv);assert(publisher.port == 49960);
     assert(memcmp(publisher.ipv4, correct, 4) == 0);
-    puts("PASS: dynamic/fixed ports, alternating A records, unrelated addresses/services, native-compatible publication (swapped SRV port, correct A)");
+    puts("PASS: dynamic/fixed ports, alternating A records, unrelated addresses/services, native-compatible publication (swapped SRV port, native PTR/SRV/TXT answer layout)");
     return 0;
 }
