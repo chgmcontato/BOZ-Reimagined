@@ -124,6 +124,8 @@ static bool g_captured; /* gameplay mode: mouse drives the camera */
 static int g_mouse_dx, g_mouse_dy;
 static float g_look_x, g_look_y;
 static int g_pumping;
+static bool g_look_frame_start = true; /* first pump since the last swap */
+static float g_look_dt;
 static bool g_manual;         /* Tab/Esc override until the game changes mode again */
 static uint64_t g_pause_release_at;
 static int g_auto_capture = -1; /* last automatic decision */
@@ -858,6 +860,12 @@ static void update_gameplay(float dt) {
     /* look: mouse velocity becomes stick deflection, or the right stick */
     float lx = axis(SDL_CONTROLLER_AXIS_RIGHTX), ly = axis(SDL_CONTROLLER_AXIS_RIGHTY);
     bool deadops = g_captured && reimagined_deadops();
+    /*
+     * Several pumps run per frame. Stick look samples once per frame, with the frame's dt, and
+     * holds until the next swap: the game must not see the deflection decay or the pad lift
+     * between its own reads.
+     */
+    bool look_hold = g_captured && !deadops && !g_opt.mouse_drag && !g_look_frame_start;
     static int logged_deadops = -1;
     if ((int)reimagined_deadops() != logged_deadops) {
         logged_deadops = reimagined_deadops();
@@ -893,10 +901,12 @@ static void update_gameplay(float dt) {
     } else if (g_captured && g_opt.mouse_drag) {
         drag_update(g_mouse_dx, g_mouse_dy);
         g_mouse_dx = g_mouse_dy = 0;
+    } else if (look_hold) {
+        /* keep the deflection; motion accumulates for the next frame */
     } else if (g_captured && (g_mouse_dx || g_mouse_dy)) {
         float scale = 0.045f * g_opt.mouse_sensitivity / (dt > 0.001f ? dt * 60.0f : 1.0f);
         g_look_x = (float)g_mouse_dx * scale;
-        g_look_y = (float)g_mouse_dy * scale * (g_opt.invert_y ? -1.0f : 1.0f);
+        g_look_y = (float)g_mouse_dy * scale * g_opt.mouse_y_scale * (g_opt.invert_y ? -1.0f : 1.0f);
     } else {
         g_look_x *= 0.35f;
         g_look_y *= 0.35f;
@@ -907,7 +917,9 @@ static void update_gameplay(float dt) {
             g_look_y = 0;
         }
     }
-    g_mouse_dx = g_mouse_dy = 0;
+    if (!look_hold) {
+        g_mouse_dx = g_mouse_dy = 0;
+    }
     if (!lx && !ly) {
         lx = g_look_x < -1 ? -1 : g_look_x > 1 ? 1 : g_look_x;
         ly = g_look_y < -1 ? -1 : g_look_y > 1 ? 1 : g_look_y;
@@ -1007,12 +1019,18 @@ void input_pump(void) {
     if (g_script_count) {
         script_run();
     }
-    update_gameplay(dt);
+    g_look_dt = g_look_dt + dt > 0.1f ? 0.1f : g_look_dt + dt;
+    update_gameplay(g_look_dt);
+    if (g_look_frame_start) {
+        g_look_frame_start = false;
+        g_look_dt = 0;
+    }
     g_pumping = 0;
 }
 
 void input_after_swap(void) {
     /* Touch timing uses monotonic milliseconds and guest input acknowledgement. */
+    g_look_frame_start = true;
 }
 
 bool input_init(void) {

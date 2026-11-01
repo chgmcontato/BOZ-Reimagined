@@ -44,6 +44,7 @@ struct host_options {
     int fps_limit;
     bool show_fps;
     float mouse_sensitivity;
+    float mouse_y_scale; /* stick look: vertical gain relative to horizontal */
     bool invert_y;
     bool mouse_drag; /* mouse = a finger dragging on the screen (1:1), else a look stick */
     bool english;    /* launcher language: English, else Portuguese */

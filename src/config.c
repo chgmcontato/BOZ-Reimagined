@@ -26,6 +26,7 @@ struct host_options g_opt = {
     .fps_limit = 0, /* unlimited: the game's own 30 fps cap is patched out (main.c) */
     .show_fps = false,
     .mouse_sensitivity = 1.0f,
+    .mouse_y_scale = 3.5f,
     .invert_y = false,
     .mouse_drag = false,
     .english = true, /* launcher language; Portuguese is one click away */
@@ -208,9 +209,9 @@ void settings_save(void) {
             "# Call of Duty: Black Ops Zombies - PC settings\n"
             "# fullscreen=1: borderless at the monitor's resolution (width/height ignored)\n"
             "fullscreen=%d\nwidth=%d\nheight=%d\nvsync=%d\nfps_limit=%d\nshow_fps=%d\n"
-            "mouse_sensitivity=%.2f\ninvert_y=%d\nmouse_look=%s\nlanguage=%s\nplayer_name=%s\n",
+            "mouse_sensitivity=%.2f\nmouse_y_scale=%.2f\ninvert_y=%d\nmouse_look=%s\nlanguage=%s\nplayer_name=%s\n",
             g_opt.fullscreen, g_opt.width, g_opt.height, g_opt.vsync, g_opt.fps_limit,
-            g_opt.show_fps, g_opt.mouse_sensitivity, g_opt.invert_y,
+            g_opt.show_fps, g_opt.mouse_sensitivity, g_opt.mouse_y_scale, g_opt.invert_y,
             g_opt.mouse_drag ? "drag" : "stick", g_opt.english ? "en" : "pt", g_player_name);
     fclose(file);
 }
@@ -262,6 +263,8 @@ static const char k_default_settings[] =
     "fps_limit=0\n"
     "show_fps=0\n"
     "mouse_sensitivity=1.0\n"
+    "# vertical camera speed relative to horizontal (the game pitches about 3.5x slower)\n"
+    "mouse_y_scale=3.5\n"
     "invert_y=0\n"
     "player_name=Player\n";
 
@@ -308,6 +311,11 @@ void settings_load(void) {
             g_opt.english = strcmp(value, "en") == 0;
         } else if (strcmp(key, "mouse_look") == 0) {
             g_opt.mouse_drag = strcmp(value, "stick") != 0;
+        } else if (strcmp(key, "mouse_y_scale") == 0) {
+            float scale = (float)atof(value);
+            if (scale > 0.0f) {
+                g_opt.mouse_y_scale = scale;
+            }
         } else if (strcmp(key, "mouse_sensitivity") == 0) {
             g_opt.mouse_sensitivity = (float)atof(value);
         } else if (strcmp(key, "invert_y") == 0) {
