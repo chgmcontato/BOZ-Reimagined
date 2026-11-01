@@ -11,6 +11,7 @@
 #include "screens.h"
 #include "ui.h"
 #include "coop_pause_state.h"
+#include "coop_stats.h"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -46,6 +47,7 @@ static uint32_t rd(uint32_t addr) {
 }
 
 static struct coop_pause_state g_coop_pause;
+static int g_party; /* most players seen in this match (connections can include stale entries) */
 static uint32_t g_owned_pause;
 static uint32_t ingame_state(void) {
     uint32_t app=rd(IMG(0x491784));
@@ -186,13 +188,25 @@ int reimagined_zombie_count(int round, int players) {
     return (int)(max * 15.0 / 24.0 + 0.5);
 }
 
+/*
+ * Real players: the remote-player map + this device. network+0x64 counts connections and may
+ * include a stale one, so it only decides "at least two" before the remote players exist.
+ * g_party keeps a dropped partner counted, as the match waits for them.
+ */
+static int sb_remote_count(void);
 static int party_size(void) {
-    uint32_t net = rd(IMG(0x4958d4));
-    if (net < GUEST_HEAP_BASE || net >= (uint32_t)GUEST_HEAP_BASE + (uint32_t)GUEST_HEAP_SIZE) {
-        return 1;
+    int n = sb_remote_count() + 1;
+    if (n < 2) {
+        uint32_t net = rd(IMG(0x4958d4));
+        if (net >= GUEST_HEAP_BASE && net < (uint32_t)GUEST_HEAP_BASE + (uint32_t)GUEST_HEAP_SIZE &&
+            (int)rd(net + 0x64) >= 2) {
+            n = 2;
+        }
     }
-    int n = (int)rd(net + 0x64);
-    return n < 1 ? 1 : n > 4 ? 4 : n;
+    if (n < g_party) {
+        n = g_party;
+    }
+    return n > 4 ? 4 : n;
 }
 
 static void zcount_thunk(void) {
@@ -432,6 +446,8 @@ void reimagined_frame(void) {
         }
     }
     sync_coop_pause(reimagined_match_active() && screens_coop_session());  /* includes the network check */
+    extern void reimagined_coop_stats_frame(void);
+    reimagined_coop_stats_frame();
     bool gameplay = reimagined_match_active() && !screen;
     /* the native tick skips time while +48 is set: menus stop the clock */
     *(volatile uint32_t *)G2H(IMG(TIMER) + 48) = gameplay && !g_coop_pause.waiting ? 0u : 1u;
@@ -442,13 +458,7 @@ void reimagined_frame(void) {
 
 /* Co-op "player dropped" card, in the menus' comic style: ink panel, red title strip, paper text. */
 static void draw_coop_pause(void) {
-    static uint64_t since;
-    static uint32_t since_session;
     uint64_t now = monotonic_ms();
-    if (since_session != g_coop_pause.session || !since) {
-        since_session = g_coop_pause.session;
-        since = now;
-    }
     const uint32_t paper = 0xfff2eee4u, ink = 0xff151211u, red = 0xff791d24u, edge = 0xff827763u,
                    muted = 0xffbcb8adu;
     ui_rect(0, 0, 1280, 720, 0x99000000u);
@@ -470,18 +480,315 @@ static void draw_coop_pause(void) {
     ui_label(dots[(now / 400) % 4], end, y + 138, 24, paper, UI_LEFT);
 
     char line[96];
-    /* network+0x64 counts this device too: 2 with two players, 1 after the drop (seen on the TV) */
-    int present = g_coop_pause.peers > 0 ? g_coop_pause.peers : 1, expected = g_coop_pause.peak;
-    if (expected <= present) {
-        expected = present + 1; /* preview, or the count was not read yet */
+    /* network+0x64 counts connections, which may include a stale one: only the drop is reliable */
+    int missing = g_coop_pause.peak - g_coop_pause.peers;
+    int expected = g_party >= 2 ? g_party : 2, present = expected - (missing > 0 ? missing : 1);
+    if (present < 1) {
+        present = 1;
     }
-    unsigned waited = (unsigned)((now - since) / 1000u);
-    snprintf(line, sizeof(line), "PLAYERS %d / %d     WAITING %u:%02u", present, expected,
-             waited / 60u, waited % 60u);
+    snprintf(line, sizeof(line), "PLAYERS %d / %d", present, expected);
     ui_font(UI_FONT_BODY);
     ui_label(line, 640, y + 182, 22, 0xfff5c518u, UI_CENTER);
     ui_label("The match resumes on its own when everyone is back.", 640, y + 220, 18, muted,
              UI_CENTER);
+}
+
+/*
+ * Scoreboard, in the style of Black Ops 1 (held key; TV: Hud.java, same reads). Data the game keeps:
+ *   [0x496110] CScoreManager  +0x40  player name hash -> current points (the HUD number), every player, live
+ *   [0x49610c] CStatsManager  +0x10 + 12 * bucket (1 solo, 2 co-op)  stat name hash -> this match, local player
+ *   [0x4958d0] CLevelManager  +0x208 co-op, +0x210 local character
+ *   0x4a28a8 +4  map of CRemotePlayer (node +0x14). +0x118 -> {player, character}; player +0xc = name
+ * A player enters the points map on the first change; until then the game shows the starting 500.
+ * Maps are STLport trees: header +4 root; node +8 left, +0xc right, +0x10 key, +0x14 value.
+ * The game only sends the others' kills/downs/revives/headshots with the end-of-match results, so
+ * during a match they travel over our own channel (coop_stats.c); "-" if that peer was not heard.
+ */
+enum { SB_SCORES = 0x496110, SB_STATS = 0x49610c, SB_REMOTES = 0x4a28a8, SB_MAX = 4, SB_UNKNOWN = -1, SB_START = 500 };
+
+struct sb_row {
+    char name[20];
+    int character, score, kills, downs, revives, headshots;
+    bool local;
+};
+
+static bool g_sb_held;
+
+/* IwHashString: djb2 over the lowercase string */
+static uint32_t sb_hash(const char *s) {
+    uint32_t h = 5381;
+    for (; *s; ++s) {
+        h = h * 33 + (uint32_t)tolower((unsigned char)*s);
+    }
+    return h;
+}
+
+/* In-order walk that stays bounded even if the tree is being rebuilt under us. */
+static int sb_nodes(uint32_t header, uint32_t *out, int max) {
+    uint32_t stack[24], node = header ? rd(header + 4) : 0;
+    int depth = 0, count = 0, steps = 0;
+    while ((node || depth) && count < max && steps++ < 256) {
+        while (node && depth < 24 && steps++ < 256) {
+            stack[depth++] = node;
+            node = rd(node + 8);
+        }
+        if (!depth) {
+            break;
+        }
+        node = stack[--depth];
+        out[count++] = node;
+        node = rd(node + 0xc);
+    }
+    return count;
+}
+
+static int sb_remote_count(void) {
+    uint32_t remotes[SB_MAX];
+    return sb_nodes(rd(IMG(SB_REMOTES) + 4), remotes, SB_MAX - 1);
+}
+
+static int sb_stat(uint32_t header, const char *name) {
+    uint32_t nodes[64], key = sb_hash(name);
+    int n = sb_nodes(header, nodes, 64);
+    for (int i = 0; i < n; ++i) {
+        if (rd(nodes[i] + 0x10) == key) {
+            return (int)rd(nodes[i] + 0x14);
+        }
+    }
+    return 0;
+}
+
+static void sb_upper(char *s) {
+    for (; *s; ++s) {
+        *s = (char)toupper((unsigned char)*s);
+    }
+}
+
+static void sb_local_stats(uint32_t stats, bool coop, struct coop_stats *out) {
+    uint32_t bucket = rd(stats + (coop ? 2u : 1u) * 0xcu + 0x10);
+    out->kills = sb_stat(bucket, "STAT_ZOMBIESKILLED");
+    out->downs = sb_stat(bucket, "STAT_PLAYERDEATHS");
+    out->revives = sb_stat(bucket, "STAT_REVIVED");
+    out->headshots = sb_stat(bucket, "STAT_HEADSHOTS");
+}
+
+static int sb_read(struct sb_row *rows) {
+    uint32_t scores = rd(IMG(SB_SCORES)), stats = rd(IMG(SB_STATS)), level = rd(IMG(LEVEL));
+    if (!scores || !stats || !level) {
+        return 0;
+    }
+    bool coop = (rd(level + 0x208) & 0xffu) != 0;
+    uint32_t nodes[16];
+    int score_count = sb_nodes(rd(scores + 0x40), nodes, 16), count = 0;
+    bool used[16] = {false};
+    if (coop) {
+        uint32_t remotes[SB_MAX];
+        int n = sb_nodes(rd(IMG(SB_REMOTES) + 4), remotes, SB_MAX - 1);
+        for (int i = 0; i < n; ++i) {
+            uint32_t info = rd(rd(remotes[i] + 0x14) + 0x118), player = rd(info);
+            if (!player) {
+                continue;
+            }
+            struct sb_row *r = &rows[count++];
+            memset(r, 0, sizeof(*r));
+            for (int c = 0; c < 15; ++c) {
+                uint32_t a = player + 0xc + (uint32_t)c;
+                unsigned char ch = (unsigned char)(rd(a & ~3u) >> ((a & 3u) * 8));
+                if (ch < 0x20 || ch > 0x7e) {
+                    break;
+                }
+                r->name[c] = (char)ch;
+            }
+            r->character = (int)rd(info + 4);
+            r->score = SB_START;
+            uint32_t key = sb_hash(r->name);
+            for (int s = 0; s < score_count; ++s) {
+                if (rd(nodes[s] + 0x10) == key) {
+                    r->score = (int)rd(nodes[s] + 0x14);
+                    used[s] = true;
+                }
+            }
+            struct coop_stats heard;
+            if (coop_stats_lookup(key, &heard)) {
+                r->kills = heard.kills;
+                r->downs = heard.downs;
+                r->revives = heard.revives;
+                r->headshots = heard.headshots;
+            } else {
+                r->kills = r->downs = r->revives = r->headshots = SB_UNKNOWN;
+            }
+            sb_upper(r->name);
+        }
+    }
+    struct sb_row *me = &rows[count++];
+    memset(me, 0, sizeof(*me));
+    me->local = true;
+    snprintf(me->name, sizeof(me->name), "%.15s", host_player_name());
+    sb_upper(me->name);
+    me->character = (int)rd(level + 0x210);
+    me->score = SB_START;
+    for (int s = 0; s < score_count; ++s) {
+        if (!used[s]) { /* the only one left in solo, whatever the level calls the player */
+            me->score = (int)rd(nodes[s] + 0x14);
+            break;
+        }
+    }
+    struct coop_stats own;
+    sb_local_stats(stats, coop, &own);
+    me->kills = own.kills;
+    me->downs = own.downs;
+    me->revives = own.revives;
+    me->headshots = own.headshots;
+    return count;
+}
+
+/* Co-op, every frame of a match: publish ours, hear theirs, and keep the real party size. */
+static void sb_coop_frame(void) {
+    uint32_t stats = rd(IMG(SB_STATS)), level = rd(IMG(LEVEL));
+    if (!stats || !level || (rd(level + 0x208) & 0xffu) == 0) {
+        return;
+    }
+    struct coop_stats own;
+    sb_local_stats(stats, true, &own);
+    char name[20];
+    snprintf(name, sizeof(name), "%.15s", host_player_name());
+    coop_stats_tick(sb_hash(name), &own);
+    int party = sb_remote_count() + 1;
+    if (party > g_party) {
+        g_party = party;
+    }
+}
+
+static void sb_sort(struct sb_row *rows, int n) {
+    for (int i = 1; i < n; ++i) {
+        struct sb_row r = rows[i];
+        int j = i;
+        for (; j > 0 && rows[j - 1].score < r.score; --j) {
+            rows[j] = rows[j - 1];
+        }
+        rows[j] = r;
+    }
+}
+
+static void sb_value(int value, float x, float y) {
+    char text[16];
+    if (value == SB_UNKNOWN) {
+        snprintf(text, sizeof(text), "-");
+    } else {
+        snprintf(text, sizeof(text), "%d", value);
+    }
+    ui_label(text, x, y, 27, 0xfff2eee4u, UI_CENTER);
+}
+
+/* Same comic language as the pause card: tilted ink panel, red title strip, paper text. */
+static void draw_scoreboard(const struct sb_row *rows, int count, uint64_t elapsed) {
+    static const uint32_t colors[4] = {0xfff2eee4u, 0xff74b9e8u, 0xfff5c518u, 0xff86cf72u};
+    static const char *const heads[5] = {"SCORE", "KILLS", "DOWNS", "REVIVES", "HEADSHOTS"};
+    static const float cols[5] = {560, 680, 790, 900, 1030};
+    const uint32_t paper = 0xfff2eee4u, ink = 0xff151211u, red = 0xff791d24u, edge = 0xff827763u,
+                   legend = 0xffd5c9acu;
+    const float x = 110, w = 1060, row = 62, h = 196 + (float)count * row, y = 360 - h / 2;
+    ui_rect(0, 0, 1280, 720, 0x66000000u);
+    float panel[8] = {x, y + 8, x + w, y, x + w - 4, y + h - 6, x + 3, y + h};
+    ui_quad(panel, 0xf0151211u);
+    ui_quad_outline(panel, 5, ink);
+    ui_quad_outline(panel, 1.5f, edge);
+    float strip[8] = {x + 24, y + 28, x + w - 30, y + 20, x + w - 34, y + 86, x + 22, y + 92};
+    ui_quad(strip, red);
+    ui_font(UI_FONT_DISPLAY);
+    ui_label("SCOREBOARD", x + 52, y + 72, 42, paper, UI_LEFT);
+    char line[96];
+    if (g_round > 0) {
+        snprintf(line, sizeof(line), "%s  -  ROUND %d", map_title(g_map), g_round);
+    } else {
+        snprintf(line, sizeof(line), "%s", map_title(g_map));
+    }
+    ui_label(line, x + w - 56, y + 68, 25, paper, UI_RIGHT);
+    float head_y = y + 124;
+    ui_label("PLAYER", x + 58, head_y, 19, legend, UI_LEFT);
+    for (int c = 0; c < 5; ++c) {
+        ui_label(heads[c], cols[c], head_y, 19, legend, UI_CENTER);
+    }
+    float top = y + 136;
+    for (int i = 0; i < count; ++i) {
+        const struct sb_row *r = &rows[i];
+        float ry = top + (float)i * row, lean = i % 2 ? -2.0f : 2.0f;
+        if (r->local) {
+            float band[8] = {x + 26, ry + 3 + lean, x + w - 28, ry + 3 - lean,
+                             x + w - 30, ry + row - 3 - lean, x + 24, ry + row - 3 + lean};
+            ui_quad(band, 0xff4a1a1eu);
+            ui_quad_outline(band, 1.5f, edge);
+        } else {
+            ui_rect(x + 34, ry + row - 1, w - 68, 1, 0x66827763u);
+        }
+        float base = ry + row * 0.5f + 10;
+        uint32_t color = colors[(unsigned)r->character & 3u];
+        float tag[8] = {x + 40, ry + 15, x + 49, ry + 13, x + 48, ry + row - 15, x + 41, ry + row - 13};
+        ui_quad(tag, color);
+        ui_label(r->name, x + 58, base, 29, color, UI_LEFT);
+        sb_value(r->score, cols[0], base);
+        sb_value(r->kills, cols[1], base);
+        sb_value(r->downs, cols[2], base);
+        sb_value(r->revives, cols[3], base);
+        sb_value(r->headshots, cols[4], base);
+    }
+    char time[32], foot[64];
+    format_time(elapsed, false, time, sizeof(time));
+    snprintf(foot, sizeof(foot), "MATCH TIME  %s", time);
+    ui_label(foot, x + w - 56, y + h - 16, 20, legend, UI_RIGHT);
+}
+
+void reimagined_coop_stats_frame(void) {
+    if (reimagined_match_active()) {
+        sb_coop_frame();
+    } else {
+        g_party = 0;
+    }
+}
+
+bool reimagined_scoreboard_available(void) {
+    return g_enabled && reimagined_match_active() && !screens_current() && !reimagined_deadops();
+}
+
+void reimagined_set_scoreboard(bool held) {
+    g_sb_held = held;
+}
+
+static void scoreboard_frame(uint64_t elapsed) {
+    static int always = -1, preview = -1;
+    if (always < 0) {
+        always = getenv("CODBOZ_SCOREBOARD_ALWAYS") != NULL; /* debug: real data, no key */
+        preview = getenv("CODBOZ_PREVIEW_SCOREBOARD") != NULL; /* debug: four sample rows */
+    }
+    if (!(g_sb_held || always || preview) || !reimagined_scoreboard_available() || g_coop_pause.waiting) {
+        return;
+    }
+    struct sb_row rows[SB_MAX];
+    int count = sb_read(rows);
+    if (preview) {
+        static const struct sb_row sample[3] = {
+            {"RICHTOFEN", 1, 12480, SB_UNKNOWN, SB_UNKNOWN, SB_UNKNOWN, SB_UNKNOWN, false},
+            {"TAKEO", 2, 8310, SB_UNKNOWN, SB_UNKNOWN, SB_UNKNOWN, SB_UNKNOWN, false},
+            {"NIKOLAI", 3, 4120, SB_UNKNOWN, SB_UNKNOWN, SB_UNKNOWN, SB_UNKNOWN, false},
+        };
+        count = count > 0 ? 1 : 0;
+        for (int i = 0; i < 3; ++i) {
+            rows[count++] = sample[i];
+        }
+    }
+    if (count > 0) {
+        sb_sort(rows, count);
+        draw_scoreboard(rows, count, elapsed);
+    }
+    if (always && count > 0) {
+        static uint64_t last;
+        if (monotonic_ms() - last >= 2000) {
+            last = monotonic_ms();
+            log_info("scoreboard: %s score %d kills %d downs %d revives %d headshots %d (%d row(s))",
+                     rows[0].name, rows[0].score, rows[0].kills, rows[0].downs, rows[0].revives,
+                     rows[0].headshots, count);
+        }
+    }
 }
 
 void reimagined_draw(void) {
@@ -511,6 +818,7 @@ void reimagined_draw(void) {
             format_time(elapsed, false, text, sizeof(text));
             draw_hud_time(text, 1232, 150);
         }
+        scoreboard_frame(elapsed);
     }
     if (screen && strcmp(screen, "player_profile") == 0) {
         format_time(total, true, text, sizeof(text));

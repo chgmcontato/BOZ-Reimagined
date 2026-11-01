@@ -33,6 +33,7 @@ Jogue no **PC (Linux e Windows)** ou na **Android TV**, juntos no co-op, a parti
 | 🤝 **Co-op entre plataformas** | PC e TV entram no mesmo lobby de Local Wi-Fi (também pelo ZeroTier) |
 | 🎮 **Controles de console** | Layout no padrão Xbox, inspirado no Black Ops dos consoles, totalmente remapeável no PC |
 | 🎨 **Menus Reimagined** | Todas as telas redesenhadas em estilo quadrinhos, pause com dados da partida, timer |
+| 🏆 **Placar** | Segure Tab ou Select para ver um placar no estilo do Black Ops, com estatísticas ao vivo de todos no co-op |
 | ⏸️ **Pausa inteligente no co-op** | A partida congela quando um jogador cai e volta quando ele retorna |
 | 🍎 **Modo iOS (PC)** | Instala direto o IPA 1.3.5, com as texturas PVRTC decodificadas na hora |
 | 📦 **Sua cópia, seus arquivos** | Instala a partir do seu APK/IPA; o OBB é lido no lugar e nunca copiado |
@@ -133,7 +134,7 @@ make PLATFORM=windows win-dist      # → build-win/codboz-pc-windows.zip
 
 ```bash
 # precisa de adb e xdelta3; TV com ADB pela rede ativado
-bash tv/instalar.sh <IP-da-TV> base.apk blackops_etc.dz boz-reimagined-tv-v0.2.xdelta
+bash tv/instalar.sh <IP-da-TV> base.apk blackops_etc.dz boz-reimagined-tv-v0.4.xdelta
 ```
 
 O patch só funciona sobre o APK original. Guia completo, incluindo co-op pelo ZeroTier, em [`tv/README.pt-BR.md`](tv/README.pt-BR.md).
@@ -178,6 +179,7 @@ Remapeie tudo no launcher (**Controls**) ou no `bindings.txt`. Padrão:
 | Faca | V, botão do meio | RS |
 | Granada / tática / claymore | G / Q / 4 | RB / LB / direcional para a direita |
 | Pause | Esc | Start |
+| Placar (segurar, só no Reimagined) | Tab | Select |
 
 O mouse vira cursor em todo menu reconhecido e câmera no gameplay; a troca é automática. Na tela
 de pause, T liga e desliga o timer. F11: tela cheia. F3: contador de FPS.

@@ -86,6 +86,166 @@ final class Hud {
         }
     }
     private long m_NextFpsRead;
+
+    // ---- scoreboard (SELECT segurado), igual ao do PC: src/reimagined.c, comentário "Scoreboard"
+    private static final long SB_SCORES = 0x496110, SB_STATS = 0x49610c, SB_REMOTES = 0x4a28a8;
+    private static final int SB_START = 500, SB_UNKNOWN = -1, SB_MAX = 4;
+    private static final class SbRow {
+        String name; int character, score = SB_START, kills = SB_UNKNOWN, downs = SB_UNKNOWN, revives = SB_UNKNOWN, headshots = SB_UNKNOWN;
+        boolean local;
+    }
+    private static volatile boolean s_SbAvailable, s_SbHeld;
+    private volatile SbRow[] m_SbRows = new SbRow[0];
+
+    /** Só no gameplay de um mapa clássico: fora disso o SELECT continua alternando o modo menu. */
+    static boolean scoreboardAvailable() { return s_SbAvailable; }
+
+    static void setScoreboard(boolean held) {
+        Hud h = s_Self;
+        s_SbHeld = held;
+        if (h != null) {
+            if (held) h.m_Worker.post(h::readScoreboard);
+            h.m_Main.post(h.m_View::invalidate);
+        }
+    }
+
+    /** IwHashString: djb2 da string em minúsculas. */
+    private static int sbHash(String s) {
+        int h = 5381;
+        for (int i = 0; i < s.length(); i++) {
+            int c = s.charAt(i);
+            if (c >= 'A' && c <= 'Z') c += 32;
+            h = h * 33 + c;
+        }
+        return h;
+    }
+
+    /** Percorre uma árvore do STLport (cabeçalho +4 raiz; nó +8 esq., +0xc dir., +0x10 chave, +0x14 valor). */
+    private int sbNodes(long header, long[] out) throws Exception {
+        long[] stack = new long[24];
+        long node = header != 0 ? u32(header + 4) : 0;
+        int depth = 0, count = 0, steps = 0;
+        while ((node != 0 || depth > 0) && count < out.length && steps++ < 256) {
+            while (node != 0 && depth < 24 && steps++ < 256) {
+                stack[depth++] = node;
+                node = u32(node + 8);
+            }
+            if (depth == 0) break;
+            node = stack[--depth];
+            out[count++] = node;
+            node = u32(node + 0xc);
+        }
+        return count;
+    }
+
+    private int sbStat(long header, String name) throws Exception {
+        long[] nodes = new long[64];
+        int n = sbNodes(header, nodes), key = sbHash(name);
+        for (int i = 0; i < n; i++)
+            if ((int) u32(nodes[i] + 0x10) == key) return (int) u32(nodes[i] + 0x14);
+        return 0;
+    }
+
+    private void readScoreboard() {
+        if (!s_SbHeld || m_Base < 0) return;
+        try {
+            long scores = u32(m_Base + SB_SCORES), stats = u32(m_Base + SB_STATS), level = u32(m_Base + LEVEL);
+            if (scores == 0 || stats == 0 || level == 0) return;
+            boolean coop = (u32(level + 0x208) & 0xff) != 0;
+            long[] nodes = new long[16];
+            int scoreCount = sbNodes(u32(scores + 0x40), nodes);
+            boolean[] used = new boolean[16];
+            java.util.ArrayList<SbRow> rows = new java.util.ArrayList<>();
+            if (coop) {
+                long[] remotes = new long[SB_MAX - 1];
+                int n = sbNodes(u32(m_Base + SB_REMOTES + 4), remotes);
+                for (int i = 0; i < n; i++) {
+                    long info = u32(u32(remotes[i] + 0x14) + 0x118), player = u32(info);
+                    if (player == 0) continue;
+                    byte[] b = new byte[15];
+                    if (!readable(player + 0xc, b.length)) continue;
+                    s_PeekBytes.invoke(null, player + 0xc, b, 0, b.length);
+                    int len = 0;
+                    while (len < b.length && b[len] >= 0x20 && b[len] <= 0x7e) len++;
+                    SbRow r = new SbRow();
+                    r.name = new String(b, 0, len, java.nio.charset.StandardCharsets.US_ASCII);
+                    r.character = (int) u32(info + 4);
+                    int key = sbHash(r.name);
+                    for (int s = 0; s < scoreCount; s++)
+                        if ((int) u32(nodes[s] + 0x10) == key) {
+                            r.score = (int) u32(nodes[s] + 0x14);
+                            used[s] = true;
+                        }
+                    r.name = r.name.toUpperCase(java.util.Locale.ROOT);
+                    int[] heard = m_CoopStats.lookup(key);
+                    if (heard != null) {
+                        r.kills = heard[0];
+                        r.downs = heard[1];
+                        r.revives = heard[2];
+                        r.headshots = heard[3];
+                    }
+                    rows.add(r);
+                }
+            }
+            SbRow me = new SbRow();
+            me.local = true;
+            me.name = PlayerNames.get(m_View.getContext(), 0).toUpperCase(java.util.Locale.ROOT);
+            me.character = (int) u32(level + 0x210);
+            for (int s = 0; s < scoreCount; s++)
+                if (!used[s]) {   // no solo é o único nó, seja qual for o nome interno do jogador
+                    me.score = (int) u32(nodes[s] + 0x14);
+                    break;
+                }
+            long bucket = u32(stats + (coop ? 2 : 1) * 0xc + 0x10);
+            me.kills = sbStat(bucket, "STAT_ZOMBIESKILLED");
+            me.headshots = sbStat(bucket, "STAT_HEADSHOTS");
+            me.revives = sbStat(bucket, "STAT_REVIVED");
+            me.downs = sbStat(bucket, "STAT_PLAYERDEATHS");
+            rows.add(me);
+            java.util.Collections.sort(rows, (a, b) -> Integer.compare(b.score, a.score));
+            m_SbRows = rows.toArray(new SbRow[0]);
+            m_Main.post(m_View::invalidate);
+        } catch (Exception e) {
+            if (!m_WarnedSb) { m_WarnedSb = true; Log.w(TAG, "leitura do scoreboard", e); }
+        }
+    }
+    private boolean m_WarnedSb;
+    private final CoopStats m_CoopStats = new CoopStats();
+    private int m_Party;   // mais jogadores vistos na partida (as conexões podem incluir entradas antigas)
+
+    /** Jogadores reais para o código das ondas; antes de os remotos existirem, a rede só diz "ao menos dois". */
+    private void syncWaveParty(int remotesPlusMe) throws Exception {
+        long addr = s_WavePartyAddr;
+        if (addr == 0) return;
+        int n = Math.max(remotesPlusMe, m_Party);
+        if (n < 2) n = 2;   // só chega aqui em co-op
+        n = Math.min(n, 4);
+        if (n != s_WavePartyValue) {
+            s_PokeInt.invoke(null, addr, n, false);
+            s_WavePartyValue = n;
+            Log.i(TAG, "zumbis: ondas para " + n + " jogadores");
+        }
+    }
+
+    /** Co-op, a cada rodada do poll: publica os nossos números e mantém o tamanho real do grupo. */
+    private void coopFrame(boolean active) {
+        if (!active) { m_Party = 0; return; }
+        if (m_Base < 0) return;
+        try {
+            long stats = u32(m_Base + SB_STATS), level = u32(m_Base + LEVEL);
+            if (stats == 0 || level == 0 || (u32(level + 0x208) & 0xff) == 0) return;
+            long bucket = u32(stats + 2 * 0xc + 0x10);
+            m_CoopStats.publish(sbHash(PlayerNames.get(m_View.getContext(), 0)),
+                    sbStat(bucket, "STAT_ZOMBIESKILLED"), sbStat(bucket, "STAT_PLAYERDEATHS"),
+                    sbStat(bucket, "STAT_REVIVED"), sbStat(bucket, "STAT_HEADSHOTS"));
+            int party = sbNodes(u32(m_Base + SB_REMOTES + 4), new long[SB_MAX - 1]) + 1;
+            if (party > m_Party) m_Party = party;
+            syncWaveParty(party);
+        } catch (Exception e) {
+            if (!m_WarnedSb) { m_WarnedSb = true; Log.w(TAG, "estatísticas do co-op", e); }
+        }
+    }
+
     /**
      * FPS medido pelo próprio motor (o que IwGxPrintFrameRate mostrava): tempo do quadro em [[base+0x44757c]]+0x588,
      * em ms inteiros (<<12) ou ponto fixo 12.12; FPS = 1000/ms.
@@ -225,6 +385,14 @@ final class Hud {
             if (timer != null && timer.active && screen == null && !m_Leaving)
                 m_Main.post(m_Cursor::onMatchActive);
             restoreTimer(timer);
+            coopFrame(timer != null && timer.active);
+            boolean sbWas = s_SbAvailable;
+            s_SbAvailable = timer != null && timer.active && screen == null && !m_Leaving
+                    && !m_Cursor.isMenuMode() && !s_DeadOps;
+            if (sbWas != s_SbAvailable)
+                m_Main.post(m_View::invalidate);
+            if (s_SbAvailable)
+                readScoreboard();
             if (timer != null && timer.active)
                 m_LastElapsed = timer.elapsedMs;
             boolean showTimer = s_TimerShown && timer != null && timer.active && screen == null
@@ -427,9 +595,8 @@ final class Hud {
     }
 
     static volatile boolean s_WaitingPlayer;
-    /** Jogadores presentes / esperados e início da espera, para o cartão de partida pausada. */
+    /** Jogadores presentes / esperados, para o cartão de partida pausada. */
     static volatile int s_WaitPresent = 1, s_WaitExpected = 2;
-    static volatile long s_WaitSince;
     private final CoopPauseState m_CoopPause = new CoopPauseState();
     private long m_OwnedPause;
     private long nativeIngameState() throws Exception {
@@ -459,11 +626,10 @@ final class Hud {
                     s_PokeByte.invoke(null,state+0x50,(byte)0);
                 m_OwnedPause=0;
             }
-            // network+0x64 já conta o próprio aparelho (2 com dois jogadores, 1 depois da queda)
-            s_WaitPresent=Math.max(1,m_CoopPause.peers());
-            s_WaitExpected=Math.max(m_CoopPause.peak(),s_WaitPresent+1);
+            // network+0x64 conta conexões, que podem incluir uma antiga: só a queda é confiável
+            s_WaitExpected=Math.max(2,m_Party);
+            s_WaitPresent=Math.max(1,s_WaitExpected-Math.max(1,m_CoopPause.peak()-m_CoopPause.peers()));
             if(waiting!=s_WaitingPlayer) {
-                if(waiting)s_WaitSince=android.os.SystemClock.uptimeMillis();
                 s_WaitingPlayer=waiting;
                 Log.i(TAG,"Co-op: "+(waiting?"partida congelada, aguardando jogador":"jogadores presentes, partida liberada"));
                 m_Main.post(m_View::invalidate);
@@ -613,10 +779,13 @@ final class Hud {
      * depois dos patches; montado com keystone e testado no Unicorn contra a fórmula do PC), com o número de
      * jogadores da rede do jogo ([0x4958d4]+0x64, 1-4): R1-9 por tabela; R10+ = (2400 + 9 m R^2 + 80) / 160,
      * m = 1/2/4/6 (P = 0,09/0,18/0,36/0,54). zcount vira "ldr.w pc,[pc]; .word novo|1".
+     * O blob lê [[literal]+0x64]. O campo real da rede conta conexões (pode incluir uma antiga), então o literal
+     * aponta para WAVE_PARTY: um ponteiro falso tal que [ponteiro+0x64] é o número de jogadores escrito pelo Hud.
      */
-    private static final int WAVE_FN = 0x410900, WAVE_CODE = 0x410f00, WAVE_LIT = 0x64, WAVE_COOP = 0x68, NET_SLOT = 0x4958d4;
+    private static final int WAVE_FN = 0x410900, WAVE_CODE = 0x410f00, WAVE_LIT = 0x64, WAVE_COOP = 0x68, WAVE_PARTY = 0x411000;
     /** Endereço da chave de co-op do código das ondas (0 = solo: sempre 1 jogador; a rede guarda o co-op anterior). */
-    private static volatile long s_WaveCoopAddr;
+    private static volatile long s_WaveCoopAddr, s_WavePartyAddr;
+    private static int s_WavePartyValue;
     private static int s_WaveCoopValue = -1;
     private static void syncWaveCoop() {
         long addr = s_WaveCoopAddr;
@@ -635,11 +804,14 @@ final class Hud {
         try {
             s_WaveCoopAddr = 0;
             s_WaveCoopValue = -1;
+            s_WavePartyAddr = 0;
             int fn = (int) (base + WAVE_FN - region), code = (int) (base + WAVE_CODE - region);
             int w0 = (all[fn] & 0xff) | (all[fn + 1] & 0xff) << 8 | (all[fn + 2] & 0xff) << 16 | (all[fn + 3] & 0xff) << 24;
             int w1 = (all[fn + 4] & 0xff) | (all[fn + 5] & 0xff) << 8 | (all[fn + 6] & 0xff) << 16 | (all[fn + 7] & 0xff) << 24;
             if (w0 == 0xf000f8df && w1 == (int) ((base + WAVE_CODE) | 1)) {   // já aplicado nesta imagem
                 s_WaveCoopAddr = base + WAVE_CODE + WAVE_COOP;
+                s_WavePartyAddr = base + WAVE_PARTY + 4;
+                s_WavePartyValue = -1;
                 return;
             }
             final byte[] expect = {0x09, 0x29, 0x02, (byte) 0xd8, 0x0b, (byte) 0xa2, 0x50, 0x5c};
@@ -647,8 +819,15 @@ final class Hud {
                 if (all[fn + i] != expect[i]) { Log.i(TAG, "zumbis: zcount do Reimagined não encontrado"); return; }
             for (int i = 0; i < WAVE_BLOB.length; i++)
                 if (all[code + i] != 0) { Log.i(TAG, "zumbis: área livre ocupada, ondas sem mudança"); return; }
+            int party = (int) (base + WAVE_PARTY - region);
+            for (int i = 0; i < 8; i++)
+                if (all[party + i] != 0) { Log.i(TAG, "zumbis: área do grupo ocupada, ondas sem mudança"); return; }
+            s_PokeInt.invoke(null, base + WAVE_PARTY, (int) (base + WAVE_PARTY + 4 - 0x64), false);
+            s_PokeInt.invoke(null, base + WAVE_PARTY + 4, 2, false);   // co-op até o Hud confirmar
+            s_WavePartyAddr = base + WAVE_PARTY + 4;
+            s_WavePartyValue = 2;
             byte[] b = WAVE_BLOB.clone();
-            long net = base + NET_SLOT;
+            long net = base + WAVE_PARTY;
             for (int k = 0; k < 4; k++) b[WAVE_LIT + k] = (byte) (net >> (8 * k));
             for (int i = 0; i < b.length; i += 4) {
                 int w = (b[i] & 0xff) | (b[i + 1] & 0xff) << 8 | (b[i + 2] & 0xff) << 16 | (b[i + 3] & 0xff) << 24;
@@ -811,25 +990,89 @@ final class Hud {
             m_Card.setTextAlign(Paint.Align.LEFT);
             c.drawText(waiting, left, y + 138, m_Card);
             c.drawText("...".substring(0, (int) ((now / 400) % 4)), left + m_Card.measureText(waiting), y + 138, m_Card);
-            long waited = Math.max(0, (now - s_WaitSince) / 1000);
             m_Card.setTextAlign(Paint.Align.CENTER);
             m_Card.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             m_Card.setTextSize(22);
             m_Card.setColor(0xfff5c518);
-            c.drawText(String.format(java.util.Locale.ROOT, "PLAYERS %d / %d     WAITING %d:%02d",
-                    s_WaitPresent, s_WaitExpected, waited / 60, waited % 60), 640, y + 182, m_Card);
+            c.drawText("PLAYERS " + s_WaitPresent + " / " + s_WaitExpected, 640, y + 182, m_Card);
             m_Card.setTypeface(android.graphics.Typeface.DEFAULT);
             m_Card.setTextSize(18);
             m_Card.setColor(0xffbcb8ad);
             c.drawText("The match resumes on its own when everyone is back.", 640, y + 220, m_Card);
         }
 
+        private void sbText(Canvas c, String s, float x, float y, float size, int color, Paint.Align align) {
+            m_Card.setStyle(Paint.Style.FILL);
+            m_Card.setTypeface(m_Comic);
+            m_Card.setTextAlign(align);
+            m_Card.setTextSize(size);
+            m_Card.setColor(color);
+            c.drawText(s, x, y, m_Card);
+        }
+
+        private void sbValue(Canvas c, int v, float x, float y) {
+            sbText(c, v == SB_UNKNOWN ? "-" : String.valueOf(v), x, y, 27, 0xfff2eee4, Paint.Align.CENTER);
+        }
+
+        /** Mesma geometria de draw_scoreboard (src/reimagined.c). */
+        private void drawScoreboard(Canvas c, SbRow[] rows) {
+            final int[] colors = {0xfff2eee4, 0xff74b9e8, 0xfff5c518, 0xff86cf72};
+            final String[] heads = {"SCORE", "KILLS", "DOWNS", "REVIVES", "HEADSHOTS"};
+            final float[] cols = {560, 680, 790, 900, 1030};
+            final int paper = 0xfff2eee4, legend = 0xffd5c9ac, edge = 0xff827763;
+            float x = 110, w = 1060, row = 62, h = 196 + rows.length * row, y = 360 - h / 2;
+            m_Card.setStyle(Paint.Style.FILL);
+            m_Card.setColor(0x66000000);
+            c.drawRect(0, 0, 1280, 720, m_Card);
+            float[] panel = {x, y + 8, x + w, y, x + w - 4, y + h - 6, x + 3, y + h};
+            quad(c, panel, 0xf0151211, false, 0);
+            quad(c, panel, 0xff151211, true, 5);
+            quad(c, panel, edge, true, 1.5f);
+            quad(c, new float[]{x + 24, y + 28, x + w - 30, y + 20, x + w - 34, y + 86, x + 22, y + 92}, 0xff791d24, false, 0);
+            sbText(c, "SCOREBOARD", x + 52, y + 72, 42, paper, Paint.Align.LEFT);
+            String map = StyledScreen.mapName(s_Map), title = map != null ? map : "";
+            if (s_Round > 0) title += (title.isEmpty() ? "" : "  -  ") + "ROUND " + s_Round;
+            sbText(c, title, x + w - 56, y + 68, 25, paper, Paint.Align.RIGHT);
+            sbText(c, "PLAYER", x + 58, y + 124, 19, legend, Paint.Align.LEFT);
+            for (int i = 0; i < 5; i++)
+                sbText(c, heads[i], cols[i], y + 124, 19, legend, Paint.Align.CENTER);
+            float top = y + 136;
+            for (int i = 0; i < rows.length; i++) {
+                SbRow r = rows[i];
+                float ry = top + i * row, lean = i % 2 != 0 ? -2 : 2;
+                if (r.local) {
+                    float[] band = {x + 26, ry + 3 + lean, x + w - 28, ry + 3 - lean,
+                            x + w - 30, ry + row - 3 - lean, x + 24, ry + row - 3 + lean};
+                    quad(c, band, 0xff4a1a1e, false, 0);
+                    quad(c, band, edge, true, 1.5f);
+                } else {
+                    m_Card.setStyle(Paint.Style.FILL);
+                    m_Card.setColor(0x66827763);
+                    c.drawRect(x + 34, ry + row - 1, x + w - 34, ry + row, m_Card);
+                }
+                float base = ry + row * 0.5f + 10;
+                int color = colors[r.character & 3];
+                quad(c, new float[]{x + 40, ry + 15, x + 49, ry + 13, x + 48, ry + row - 15, x + 41, ry + row - 13}, color, false, 0);
+                sbText(c, r.name, x + 58, base, 29, color, Paint.Align.LEFT);
+                sbValue(c, r.score, cols[0], base);
+                sbValue(c, r.kills, cols[1], base);
+                sbValue(c, r.downs, cols[2], base);
+                sbValue(c, r.revives, cols[3], base);
+                sbValue(c, r.headshots, cols[4], base);
+            }
+            TimerSnapshot t = m_Timer;
+            if (t != null)
+                sbText(c, "MATCH TIME  " + t.elapsed, x + w - 56, y + h - 16, 20, legend, Paint.Align.RIGHT);
+        }
+
         @Override
         protected void onDraw(Canvas c) {
             boolean waitBanner=s_WaitingPlayer && m_Cursor.screenNow()==null;
+            SbRow[] sbRows = m_SbRows;
+            boolean sbOn = s_SbHeld && s_SbAvailable && !waitBanner && sbRows.length > 0;
             int fps = s_Fps;
             boolean fpsOn = s_FpsShown && fps > 0;
-            if (!m_Show && !m_ShowTimer && !m_MainTotal && !m_ProfileTotal && !waitBanner && !fpsOn)
+            if (!m_Show && !m_ShowTimer && !m_MainTotal && !m_ProfileTotal && !waitBanner && !fpsOn && !sbOn)
                 return;
             // Mantém o HUD inteiro dentro da área de referência, inclusive fora de 16:9.
             float s = Math.min(getWidth() / 1280f, getHeight() / 720f);
@@ -866,7 +1109,7 @@ final class Hud {
                 c.scale(s, s);
                 drawCoopPause(c);
                 c.restoreToCount(waitSave);
-                postInvalidateDelayed(400);   // pontinhos e tempo de espera
+                postInvalidateDelayed(400);   // pontinhos
             }
             TimerSnapshot timer = m_Timer;
             if (timer != null) {
@@ -883,6 +1126,12 @@ final class Hud {
                 if (m_ProfileTotal && timer.status != 0)
                     comic(c, "NOT SAVED YET", 1084, 590, 20, 0xfff2eee4);
                 c.restoreToCount(textSave);
+            }
+            if (sbOn) {
+                int sbSave = c.save();
+                c.scale(s, s);
+                drawScoreboard(c, sbRows);
+                c.restoreToCount(sbSave);
             }
             if (fpsOn) {   // igual ao do PC: "FPS N", 22 px, amarelo, centralizado no rodapé
                 int fpsSave = c.save();

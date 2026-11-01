@@ -69,6 +69,7 @@ SRC := \
   src/ui.c \
   src/zeroconf.c \
   src/zeroconf_platform_posix.c \
+  src/coop_stats.c \
   third_party/cJSON.c \
   third_party/LzmaDec.c
 ifeq ($(PLATFORM),windows)

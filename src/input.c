@@ -534,8 +534,12 @@ static void handle_event(const SDL_Event *ev) {
             break;
         }
         if (sc == SDL_SCANCODE_TAB && down) {
-            g_manual = true;
-            set_captured(!g_captured);
+            /* during a Reimagined match Tab belongs to the scoreboard while it is bound to it */
+            if (!(g_captured && reimagined_scoreboard_available() &&
+                  bindings_uses(BIND_SCOREBOARD, "KEY:Tab"))) {
+                g_manual = true;
+                set_captured(!g_captured);
+            }
             break;
         }
         if (sc == SDL_SCANCODE_F11 && down) {
@@ -952,6 +956,10 @@ static void update_gameplay(float dt) {
         /* in menus the controller drives the focus (handle_event), not the game keys */
         uint8_t down = (uint8_t)bindings_down((enum bind_action)a, g_captured,
                                                g_captured || a == BIND_PAUSE ? g_controller : NULL);
+        if (a == BIND_SCOREBOARD) {
+            reimagined_set_scoreboard(down != 0); /* drawn by the host: nothing reaches the game */
+            continue;
+        }
         if (a == BIND_PAUSE && !g_captured && !g_controller) {
             down = 0; /* Escape in menus is "back", handled as an event */
         }

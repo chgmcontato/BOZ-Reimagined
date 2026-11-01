@@ -16,6 +16,9 @@ void reimagined_patch_waves(void); /* before the game runs */
 int reimagined_zombie_count(int round, int players);
 bool reimagined_coop_match(void); /* 2+ players connected in the current match */ /* Dead Ops Arcade level loaded (original and reimagined) */ /* native level name; "deadops" in Dead Ops Arcade */
 void reimagined_toggle_timer(void);
+/* Hold-to-show scoreboard: only during live gameplay of a classic map. */
+bool reimagined_scoreboard_available(void);
+void reimagined_set_scoreboard(bool held);
 void reimagined_frame(void);
 void reimagined_draw(void);
 

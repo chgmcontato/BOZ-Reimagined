@@ -21,6 +21,7 @@ enum bind_action {
     BIND_PAUSE,
     BIND_NUKE, /* Dead Ops Arcade special weapon */
     BIND_BOOST, /* Dead Ops Arcade speed boost (lightning icon) */
+    BIND_SCOREBOARD, /* Reimagined: hold to show the scoreboard (host only, no game key) */
     BIND_COUNT,
 };
 
@@ -40,6 +41,8 @@ void bindings_describe(const char *input, char *out, int size);
 /* Live state, polled once per pump. keyboard_mouse = mouse is captured. */
 void bindings_wheel(int y);
 bool bindings_down(enum bind_action action, bool keyboard_mouse, void *controller);
+/* The action is bound to exactly this input ("KEY:Tab"). */
+bool bindings_uses(enum bind_action action, const char *input);
 void bindings_end_frame(void);
 
 #endif

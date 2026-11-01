@@ -23,7 +23,7 @@ import android.widget.TextView;
  * Os menus do jogo só aceitam toque (o Xperia Play também tinha tela de toque).
  * No modo menu, nas telas mapeadas (Menus) o direcional move um foco entre os botões e A toca o botão em foco;
  * nas demais, uma seta é movida pelos analógicos/direcional e A toca onde ela estiver.
- * SELECT alterna entre modo menu e modo jogo.
+ * SELECT alterna entre modo menu e modo jogo; no gameplay de uma partida, segurar mostra o scoreboard (Hud).
  */
 final class Cursor {
     private static final float SPEED = 900f;        // pixels por segundo com o analógico no máximo
@@ -159,8 +159,13 @@ final class Cursor {
             return true;
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         if (code == KeyEvent.KEYCODE_BUTTON_SELECT) {
-            if (down && e.getRepeatCount() == 0)
-                setMenuMode(!m_MenuMode);
+            // na partida: segurar mostra o scoreboard; fora dela continua alternando o modo menu
+            if (!down) {
+                Hud.setScoreboard(false);
+            } else if (e.getRepeatCount() == 0) {
+                if (!m_MenuMode && Hud.scoreboardAvailable()) Hud.setScoreboard(true);
+                else setMenuMode(!m_MenuMode);
+            }
             return true;
         }
         // START segue para o jogo (pausa do Xperia Play); o cursor acompanha a pausa

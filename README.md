@@ -33,6 +33,7 @@ Play on **PC (Linux & Windows)** or **Android TV**, together in co-op, from your
 | 🤝 **Cross-platform co-op** | PC and TV join the same Local Wi-Fi lobby (works over ZeroTier too) |
 | 🎮 **Console controls** | Xbox-style layout inspired by Black Ops on consoles, fully remappable on PC |
 | 🎨 **Reimagined menus** | Comic-style redesign of every screen, pause menu with match data, match timer |
+| 🏆 **Scoreboard** | Hold Tab or Select for a Black Ops style scoreboard, with live stats from every co-op player |
 | ⏸️ **Smart co-op pause** | The match freezes when a player drops and resumes when they're back |
 | 🍎 **iOS mode (PC)** | Installs the 1.3.5 IPA directly, with its PVRTC textures decoded on the fly |
 | 📦 **Your copy, your files** | Installs from your own APK/IPA; the OBB is read in place and never copied |
@@ -133,7 +134,7 @@ make PLATFORM=windows win-dist      # → build-win/codboz-pc-windows.zip
 
 ```bash
 # needs adb and xdelta3; TV with ADB over network enabled
-bash tv/instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.2.xdelta
+bash tv/instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.4.xdelta
 ```
 
 The patch only works on top of the original APK. Full guide, including co-op over ZeroTier, in [`tv/README.md`](tv/README.md) · [português](tv/README.pt-BR.md).
@@ -178,6 +179,7 @@ Remap everything in the launcher (**Controles**) or in `bindings.txt`. Defaults:
 | Melee | V, middle button | RS |
 | Grenade / tactical / claymore | G / Q / 4 | RB / LB / D-pad right |
 | Pause | Esc | Start |
+| Scoreboard (hold, Reimagined only) | Tab | Select |
 
 The mouse is a cursor on every recognised menu and a camera in gameplay; the switch is automatic.
 On the pause screen, T toggles the match timer. F11: fullscreen. F3: FPS counter.
