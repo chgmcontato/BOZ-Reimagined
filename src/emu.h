@@ -7,7 +7,7 @@
 
 /*
  * Guest memory is mapped at the same numeric address in the host process and in
- * Unicorn, so a 32-bit guest pointer can be dereferenced directly by host code.
+ * the JIT, so a 32-bit guest pointer can be dereferenced directly by host code.
  */
 enum {
     GUEST_STACK_BASE = 0x40000000u,
@@ -73,7 +73,7 @@ uint32_t guest_call3(uint32_t fn, uint32_t a, uint32_t b, uint32_t c);
 int emu_run(uint32_t entry);
 void emu_dump_state(const char *why);
 
-/* Guest heap (identity mapped, visible to Unicorn). */
+/* Guest heap (identity mapped, visible to the guest). */
 void gheap_init(void);
 uint32_t gmalloc(uint32_t size);
 uint32_t gcalloc(uint32_t count, uint32_t size);

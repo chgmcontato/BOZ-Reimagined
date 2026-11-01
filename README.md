@@ -15,8 +15,7 @@ Reimagined menus, pause screen and timers look the same on both.
 
 Runs the game from **your own APK and OBB**, or from **your own iOS IPA**.
 
-The game's ARM executable (`boz.s3e`) runs on the Dynarmic ARM JIT (or on Unicorn with
-`make EMU=unicorn`, see below); its system calls
+The game's ARM executable (`boz.s3e`) runs on the Dynarmic ARM JIT; its system calls
 (s3e, EGL, OpenGL ES, sound, sockets, ZeroConf) are reimplemented on SDL2 and desktop OpenGL.
 The game always renders at 1280x720, the TV's resolution, scaled to the monitor
 (borderless fullscreen by default).
@@ -37,19 +36,13 @@ choice; `--install FILE` installs from the command line.
 Data lives in `build/game/`: `settings.txt`, `bindings.txt`, `launcher.cfg`, and one folder per
 mode (`original/`, `reimagined/`, `ios/`) with its assets and saves.
 
-### CPU backends (Dynarmic, Unicorn)
+### CPU emulation
 
-```sh
-make CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/path/to/boost/include      # Dynarmic (default)
-make EMU=unicorn CC=gcc                                            # Unicorn, into build-unicorn/
-./build-unicorn/codboz-pc --data build/game
-```
-
-`run.sh` starts `build/codboz-pc`; `CODBOZ_EMU=unicorn ./run.sh` starts the Unicorn build.
-Dynarmic: same game, same data, about 6x less CPU time per frame (Call of the Dead without vsync: 38 -> 211
-fps on a Radeon 610M laptop). `CODBOZ_DYN_FASTMEM=1` is faster still but lets the game reach any
-low host memory; `CODBOZ_DYN_CODE_WATCH=1` checks for self-modifying code (none found).
-Details: `tools/dynarmic_probe/README.md`.
+The game's ARM code runs on the Dynarmic A32 JIT (`third_party/dynarmic`, which needs Boost headers:
+`make BOOST_INCLUDE_DIR=/path/to/boost/include` if they are not found). Call of the Dead without vsync
+runs at about 211 fps on a Radeon 610M laptop. `CODBOZ_DYN_FASTMEM=1` is faster still but lets the
+game reach any low host memory; `CODBOZ_DYN_CODE_WATCH=1` checks for self-modifying code (none found).
+The earlier Unicorn backend lives at tag `last-unicorn`. Details: `tools/dynarmic_probe/README.md`.
 
 ### Windows
 

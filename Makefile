@@ -1,17 +1,11 @@
 CC ?= cc
 PKG_CONFIG ?= pkg-config
-# CPU backend: dynarmic (default, JIT, needs the third_party/dynarmic submodule and Boost headers)
-# or unicorn (`make EMU=unicorn`, builds into build-unicorn/; run it with
-# `build-unicorn/codboz-pc --data build/game`).
-EMU ?= dynarmic
+# CPU: the Dynarmic A32 JIT (third_party/dynarmic submodule; needs Boost headers).
+# The Unicorn backend was removed after tag last-unicorn.
 .DEFAULT_GOAL := all
-ifeq ($(EMU),unicorn)
-BUILD_DIR ?= build-unicorn
-endif
 # Windows: `make PLATFORM=windows` cross-builds build-win/codboz-pc.exe with MinGW-w64
 # (Dynarmic only). SDL2's MinGW package is unpacked in build-win/deps (see `make win-deps`).
 ifeq ($(PLATFORM),windows)
-EMU := dynarmic
 CC := x86_64-w64-mingw32-gcc
 CXX := x86_64-w64-mingw32-g++
 BUILD_DIR ?= build-win
@@ -31,19 +25,19 @@ else
 SDL_CFLAGS := $(shell $(PKG_CONFIG) --cflags sdl2)
 SDL_LIBS := $(shell $(PKG_CONFIG) --libs sdl2)
 endif
-UC_CFLAGS := $(shell $(PKG_CONFIG) --cflags unicorn)
-UC_LIBS := $(shell $(PKG_CONFIG) --libs unicorn)
 
 CFLAGS ?= -O3 -g -march=x86-64-v2 -flto=auto
 LTO_LDFLAGS := -flto=auto -O3
 PROJECT_CFLAGS := -std=gnu11 -Wall -Wextra -Wno-unused-parameter -D_GNU_SOURCE
 # Guest pointers are identity-mapped into the low 4 GiB, so keep the host image there too.
 LDFLAGS ?=
-PROJECT_LDFLAGS := -no-pie -Wl,-rpath,$(shell $(PKG_CONFIG) --variable=libdir unicorn)
+PROJECT_LDFLAGS := -no-pie
+DYN_CMAKE_SYSTEM :=
 ifeq ($(PLATFORM),windows)
 # Same as -no-pie on Linux: the image at a fixed low address, no high-entropy ASLR.
 PROJECT_LDFLAGS := -Wl,--image-base=0x400000 -Wl,--disable-dynamicbase \
   -Wl,--disable-high-entropy-va -static-libgcc -static-libstdc++ -static
+DYN_CMAKE_SYSTEM := -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=x86_64 -G "Unix Makefiles"
 endif
 
 SRC := \
@@ -51,7 +45,6 @@ SRC := \
   src/audio.c \
   src/bindings.c \
   src/config.c \
-  src/emu.c \
   src/file.c \
   src/gheap.c \
   src/gl.c \
@@ -83,7 +76,6 @@ SRC := $(patsubst src/zeroconf_platform_posix.c,src/zeroconf_platform_win32.c,$(
 endif
 OBJ := $(SRC:%.c=$(BUILD_DIR)/%.o)
 
-ifeq ($(EMU),dynarmic)
 CXX ?= c++
 CMAKE ?= cmake
 # Boost headers (header-only use). Override with BOOST_INCLUDE_DIR=... if yours live elsewhere.
@@ -93,15 +85,7 @@ DYN_BUILD := $(BUILD_DIR)/dynarmic
 DYN_LIBS := $(DYN_BUILD)/src/dynarmic/libdynarmic.a $(DYN_BUILD)/externals/mcl/src/libmcl.a \
   $(DYN_BUILD)/externals/fmt/libfmt.a $(DYN_BUILD)/externals/zydis/libZydis.a \
   $(DYN_BUILD)/externals/zydis/zycore/libZycore.a
-UC_CFLAGS :=
-UC_LIBS :=
-ifneq ($(PLATFORM),windows)
-PROJECT_LDFLAGS := -no-pie
-DYN_CMAKE_SYSTEM :=
-else
-DYN_CMAKE_SYSTEM := -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=x86_64 -G "Unix Makefiles"
-endif
-OBJ := $(filter-out $(BUILD_DIR)/src/emu.o,$(OBJ)) $(BUILD_DIR)/src/emu_dynarmic.o
+OBJ += $(BUILD_DIR)/src/emu_dynarmic.o
 LINK := $(CXX)
 
 $(DYN_LIBS) &:
@@ -115,10 +99,6 @@ $(BUILD_DIR)/src/emu_dynarmic.o: src/emu_dynarmic.cpp src/*.h $(DYN_LIBS)
 	@mkdir -p $(dir $@)
 	$(CXX) -std=c++20 -O3 -g -march=x86-64-v2 -flto=auto -Wall -Wextra -D_GNU_SOURCE \
 	  -Isrc -I$(DYN_SRC)/src -c $< -o $@
-else
-LINK := $(CC)
-DYN_LIBS :=
-endif
 
 all: $(TARGET)
 
@@ -127,14 +107,14 @@ src/gl_thunks.c: tools/gen_gl.py
 
 $(BUILD_DIR)/%.o: %.c src/*.h
 	@mkdir -p $(dir $@)
-	$(CC) $(PROJECT_CFLAGS) $(CFLAGS) $(SDL_CFLAGS) $(UC_CFLAGS) -c $< -o $@
+	$(CC) $(PROJECT_CFLAGS) $(CFLAGS) $(SDL_CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/third_party/%.o: third_party/%.c
 	@mkdir -p $(dir $@)
 	$(CC) -std=gnu11 -O2 -D_7ZIP_ST -c $< -o $@
 
 $(TARGET): $(OBJ) $(DYN_LIBS)
-	$(LINK) $(PROJECT_LDFLAGS) $(LTO_LDFLAGS) -march=x86-64-v2 $(LDFLAGS) -o $@ $(OBJ) $(DYN_LIBS) $(SDL_LIBS) $(UC_LIBS) -lm
+	$(LINK) $(PROJECT_LDFLAGS) $(LTO_LDFLAGS) -march=x86-64-v2 $(LDFLAGS) -o $@ $(OBJ) $(DYN_LIBS) $(SDL_LIBS) -lm
 
 # SDL2's official MinGW development package, for PLATFORM=windows.
 win-deps:
