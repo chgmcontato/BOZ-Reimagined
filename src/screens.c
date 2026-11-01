@@ -18,6 +18,7 @@ enum {
     INTERVAL_MS = 120,
     CAP_W = 320,
     CAP_H = 180,
+    SCENE_MIN_DRAWS = 20, /* per INTERVAL_MS */
 };
 
 #define THRESHOLD 16.0f
@@ -46,6 +47,8 @@ bool screens_coop_session(void) {
 }
 static uint64_t g_next_ms, g_changed_ms, g_unknown_since;
 static uint32_t g_fbo, g_rb;
+static bool g_scene;
+static uint64_t g_scene_changed_ms;
 static uint8_t g_pixels[CAP_W * CAP_H * 4];
 
 static struct {
@@ -316,6 +319,17 @@ void screens_capture(uint32_t source_fbo, int width, int height) {
         return;
     }
     g_next_ms = now + INTERVAL_MS;
+    /* 3D scene or flat menu: only a scene draws with the depth test on. */
+    {
+        extern unsigned gl_depth_draws;
+        bool scene = gl_depth_draws >= SCENE_MIN_DRAWS;
+        gl_depth_draws = 0;
+        if (scene != g_scene) {
+            g_scene = scene;
+            g_scene_changed_ms = now;
+            log_debug("scene: %s", scene ? "3d" : "flat");
+        }
+    }
     if (!g_fbo) {
         *(void **)&gl.GenFramebuffers = gl_proc("glGenFramebuffers");
         *(void **)&gl.BindFramebuffer = gl_proc("glBindFramebuffer");
@@ -358,6 +372,10 @@ void screens_capture(uint32_t source_fbo, int width, int height) {
         gl.Enable(0x0c11);
     }
     recognize();
+}
+
+bool screens_scene_stable(void) {
+    return g_scene && monotonic_ms() - g_scene_changed_ms > 1000;
 }
 
 const char *screens_current(void) {

@@ -20,6 +20,7 @@ bool screens_available(void);
 void screens_capture(uint32_t fbo, int width, int height);
 /* Recognised menu id ("main", "pause", ...) or NULL while in game / loading. */
 const char *screens_current(void);
+bool screens_scene_stable(void);
 const char *screens_last_known(void);
 uint64_t screens_changed_ms(void);
 bool screens_is(const char *id);
