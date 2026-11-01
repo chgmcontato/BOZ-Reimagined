@@ -1,7 +1,19 @@
-# codboz-pc
+# BOZ Reimagined
 
-Runs **Call of Duty: Black Ops Zombies** on a PC from **your own APK and OBB**, or from **your own iOS IPA**.
-No game data ships here.
+**Call of Duty: Black Ops Zombies** (the 2012 mobile game) rebuilt for big screens and controllers,
+from **your own copy of the game**. No game data ships here. Pick where to play:
+
+| | Where | How |
+|---|---|---|
+| **PC** | Linux and Windows | this folder: the game runs on an ARM JIT with SDL2/OpenGL (see below) |
+| **Android TV** | TV with a gamepad | [`tv/`](tv/README.md): patched APK installed over ADB ([português](tv/README.pt-BR.md)) |
+
+Both play **co-op with each other** over the local network (PC and TV in the same lobby), and the
+Reimagined menus, pause screen and timers look the same on both.
+
+## PC
+
+Runs the game from **your own APK and OBB**, or from **your own iOS IPA**.
 
 The game's ARM executable (`boz.s3e`) runs on the Dynarmic ARM JIT (or on Unicorn with
 `make EMU=unicorn`, see below); its system calls
@@ -9,7 +21,7 @@ The game's ARM executable (`boz.s3e`) runs on the Dynarmic ARM JIT (or on Unicor
 The game always renders at 1280x720, the TV's resolution, scaled to the monitor
 (borderless fullscreen by default).
 
-## Start
+### Start
 
 ```sh
 git submodule update --init --recursive

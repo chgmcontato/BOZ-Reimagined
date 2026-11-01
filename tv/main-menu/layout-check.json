@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "actions": [
+    "single",
+    "profile",
+    "coop",
+    "extras",
+    "quit"
+  ],
+  "dpad_graph": {
+    "single": [
+      "profile",
+      "extras"
+    ],
+    "profile": [
+      "single",
+      "coop",
+      "extras"
+    ],
+    "coop": [
+      "profile",
+      "quit"
+    ],
+    "extras": [
+      "single",
+      "quit"
+    ],
+    "quit": [
+      "coop",
+      "extras"
+    ]
+  },
+  "tv_tested": false
+}

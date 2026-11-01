@@ -1,0 +1,69 @@
+# === Jogo original / dados de terceiros ===
+/Call of Duty Black Ops/
+/obb/
+/obb_moon/
+/base.apk
+/maps/pc/
+/maps/mobile/
+
+# === Saídas de build ===
+/out/
+/maps/out/
+*.apk
+*.apk.part*
+*.apk.idsig
+*.apk.sha256
+*.s3e
+*.raw
+*.obb
+*.dz
+*.bin
+*.zone
+*.ff
+*.so
+*.dex
+*.jar
+*.dll
+*.dds
+*.obj
+*.mtl
+*.bak
+__pycache__/
+*.pyc
+.venv/
+
+# === Segredos ===
+*.jks
+*.keystore
+
+# === Editor / SO ===
+.vscode/
+.idea/
+*.swp
+*~
+
+# === Claude Code (local / runtime) ===
+.claude/settings.local.json
+CLAUDE.local.md
+project.local.yaml
+production/session-logs/
+production/session-state/
+.scratch/
+.claude/agent-memory/
+.claude/worktrees/
+docs/consistency-failures.md
+/re/out/
+menus-style/previews/
+menus-style/design/*.svg
+menus-style/design/comic.ttf
+
+# === Assets do jogo (extraídos do seu próprio APK/OBB; não são distribuídos) ===
+character-menu/assets/*.png
+character-menu/assets/*.ttf
+hud/*.png
+menus/shots/
+main-menu/assets/*.png
+branding/assets/*.png
+menus-edit/tv-current/
+menus-edit/night-*/
+maps/menu/

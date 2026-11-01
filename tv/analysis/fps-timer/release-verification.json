@@ -1,0 +1,32 @@
+{
+  "apk": "/home/carloshgm/Downloads/COD.BOZ/Port/BOZ-TV.apk",
+  "apk_sha256": "86775902e7a4ffaa689770578507b481f19eb17e229f975422302f057cb05765",
+  "previous_apk_sha256": "15da0f7f96ae4700748d082e917eec0a3244b29ba83fa4994d5a45934c6ebab3",
+  "signing_certificate_sha256": "ffaef6aa3e01a27bc5e3bbb0a6a9efa33a1a5a201a288e2d61b6b760edb36db8",
+  "signature_verified": true,
+  "alignment_verified": true,
+  "changed_entries_excluding_signatures": [
+    "assets/boz.s3e",
+    "classes.dex"
+  ],
+  "exact_native_delta_verified": true,
+  "idempotency_verified": true,
+  "features_independent_verified": true,
+  "icf_unchanged": true,
+  "drop_scripts_build_script_obb_unchanged": {
+    "build/patch_pickups.py": "a400e685eb79060f13f572c2f5749f4a9f7d92b6fc18e58350baa11245aa91ab",
+    "build/patch_pickups_console.py": "03da803bda37658d3c259a654dfa871da18de899d344a076754b17da369e1ff0",
+    "build/build.sh": "8c79202f96085e361925ac784e97cac660912f0b6de6bd118e2ed627fd719536",
+    "obb/blackops_etc.dz": "d4f731072a93fb8c96d7c296c830171191ac8a740a382675d9947d7b019829fb"
+  },
+  "device_testing": "pending; no TV access or installation performed",
+  "arm_emulation": {
+    "classic_and_deadops_lifecycle": "PASS",
+    "native_stats_tree_and_serialization_round_trip": "PASS (I/O primitives mocked)",
+    "restart_and_duplicate_finalization": "PASS",
+    "64_bit_boundaries_and_save_errors": "PASS",
+    "fps_light_and_heavy_workload_and_early_wake": "PASS (device APIs mocked)",
+    "existing_drop_scenarios": 84
+  },
+  "java_build_and_format_boundaries": "PASS"
+}

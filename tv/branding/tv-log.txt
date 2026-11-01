@@ -1,0 +1,10 @@
+--------- beginning of crash
+--------- beginning of perf
+--------- beginning of system
+--------- beginning of main
+10-25 11:05:27.294 I/BozPad  (  309): Menus: 17 telas mapeadas
+10-25 11:05:27.320 I/BozPad  (  309): NetPad ouvindo UDP 27050
+10-25 11:05:27.333 I/BozPad  (  309): gamepad: 8BitDo Ultimate 3mode Xbox
+10-25 11:05:30.294 I/BozPad  (  309): s3eTouchpad criado pelo motor
+10-25 11:05:30.294 I/BozPad  (  309): s3eTouchpadInit chamado pelo jogo
+10-25 11:05:41.038 I/BozPad  (  309): Menus: tela title

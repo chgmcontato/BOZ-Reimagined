@@ -1,0 +1,78 @@
+{
+  "nikolai.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/246_char_select_nik.png",
+    "sha256": "ce007a2cbc26af4ce0b5c171ec8ee1d92558e3609d891379826865652bfb78c1"
+  },
+  "takeo.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/245_char_select_tak.png",
+    "sha256": "3f18995adbf99e5c2e64386be8056d5e60feefac069ed39c338474d2a5197841"
+  },
+  "richtofen.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/237_char_select_dr.png",
+    "sha256": "0ba3b2d52738ce70798639587d5ebbf67094bf478b2da2d237104e56e2945630"
+  },
+  "dempsey.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/244_char_select_tan.png",
+    "sha256": "c1d2230157b4e776bf8af5dfd37c38add4058b6306f9b6a65e6adaf9243ccab6"
+  },
+  "kino.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/182_setup_kino_art.png",
+    "sha256": "5cf94ac5f2680c1809582b8e997ecb78a94ccda384e0e39c0d71f2a502372428"
+  },
+  "deadops.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/184_setup_deadops_art.png",
+    "sha256": "3ed843eb6614408cf10b7492820a8ffc243dccd7b154b9e0b55413cce9e5b67d"
+  },
+  "ascension.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/183_setup_ascension_art.png",
+    "sha256": "46cde6be83401bd594b8c3d0ab194556588089cc628d6c201d6cb38d77153575"
+  },
+  "cotd.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/185_setup_callofthedead_art.png",
+    "sha256": "0d50f4ea9de87d47fdb507a41c5c04c3efd4944e1bcf3ddac516a07f245f942c"
+  },
+  "background.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/previews/229_kino_background.png",
+    "sha256": "aafe76fbd0ca661d31edd6906bbc3e5430202e63eb1cd95c4a7c44ba8bdaa735"
+  },
+  "arcade-background.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/previews/230_doa_bkg.png",
+    "sha256": "f4aa2c5497f3c3183cc6dfe8adda6a8ed414fa79dbc9232048219510dd831289"
+  },
+  "ascension-background.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/previews/231_ascension_bkg.png",
+    "sha256": "eddaf287afd94c988338fdda8c586f024089028b3ac8d45047167fd2f505db00"
+  },
+  "cotd-background.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/previews/232_callofthedead_bkg.png",
+    "sha256": "b020bee1dc99681a3f55df2c4d55384b3f50cd84c38c3dbfa731afd04647a41e"
+  },
+  "paper.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/previews/210_bgnd_single_player.png",
+    "sha256": "ac8954de7263177f8b7a4bfb3a766d933da620e37a708212a0cd2ac312081fe7"
+  },
+  "title.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/025_select_character_title_bgnd.png",
+    "sha256": "a7b28adfdb0224cdc81829135e3c08dd5bbbdb090e07aacb2afcf72a043de645"
+  },
+  "back.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/028_img_butt_back.png",
+    "sha256": "5bd1dd7c5c74708e4b8e68930e5e4801867becf3ccc043ef50d11362e102e07f"
+  },
+  "start.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/212_img_butt_start.png",
+    "sha256": "9552294d67972db0beb4ab3b23a49117d535d9fd24782c8db1c401ee5abc3e7f"
+  },
+  "tick.png": {
+    "source": "/home/carloshgm/Downloads/COD.BOZ/port/menus-edit/work/assets/225_select_character_tick.png",
+    "sha256": "8495bbf17ff936a254be6e4eca93744fecb7f6208b7ff2bb9e09c6d9f96ff389"
+  },
+  "carbon.ttf": {
+    "source": "/home/carloshgm/.local/share/fonts/104_Carbon Bold.ttf",
+    "sha256": "4647ceb56e6bab4a9824c568c11834c5ba4efa7d5aa5b207199cbdc91034fa49"
+  },
+  "comic.ttf": {
+    "source": "/home/carloshgm/.local/share/fonts/21_CCAdamKubert.ttf",
+    "sha256": "12cf2b0b023cc5ee9de461449910933ea3bbadd2456047c641bc9f93279d19ad"
+  }
+}

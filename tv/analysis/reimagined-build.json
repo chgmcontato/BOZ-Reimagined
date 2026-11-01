@@ -1,0 +1,12 @@
+{
+  "apk_sha256": "6b3d1fadc5b7762e06333bc4c0f48d2dce7b67a98533fdef7d006f6ce8601f41",
+  "apk_md5": "28d05f8f67516f81497f39ffacb71020",
+  "unchanged_from_previous": {
+    "assets/boz.s3e": true,
+    "lib/armeabi/libs3e_android.so": true,
+    "assets/blackops_loader.dz": true
+  },
+  "frida_present": false,
+  "obb_preserved": true,
+  "tv_install_performed": false
+}

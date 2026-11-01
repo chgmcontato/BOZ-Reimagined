@@ -1,0 +1,13 @@
+{
+  "changed_entries": [
+    "classes.dex",
+    "assets/branding/title-reimagined-v1.png",
+    "META-INF/BOZ.SF",
+    "META-INF/BOZ.RSA",
+    "META-INF/MANIFEST.MF"
+  ],
+  "no_removed_entries": true,
+  "native_and_menu_definitions_unchanged": true,
+  "frida": false,
+  "sha256": "bca36d8190fb1878a8610cd5afd52453bb56240fb1b36848f36ea1eac08a6d7e"
+}

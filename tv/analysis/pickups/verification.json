@@ -1,0 +1,21 @@
+{
+  "apk": "15da0f7f96ae4700748d082e917eec0a3244b29ba83fa4994d5a45934c6ebab3",
+  "boz.s3e": "6441e9410c8e50fc2d6661deba3d8868e864d975305a4b1806b63faed7530b46",
+  "boz.raw": "9e4095ace3bd5666f4d5416c52c7609e6c2b68e7d8b4d0c2d4f9e94770c2c1e6",
+  "obb": "d4f731072a93fb8c96d7c296c830171191ac8a740a382675d9947d7b019829fb",
+  "raw_changed_bytes": 144,
+  "outside_patch_changed_bytes": 0,
+  "obb_changed_entries": [
+    [
+      [
+        "",
+        "console.bin"
+      ],
+      "82a69dbbb1abaf70519f14f8b5d60063c18a299b3b7546bd3bd0b645fa8c1b83",
+      "81914e97863c96a226d713c958a0bb2b8d2ea26273cbba3546d418960f46efe0"
+    ]
+  ],
+  "signature_verified": true,
+  "arm_emulation_scenarios": 84,
+  "tv_tested": false
+}

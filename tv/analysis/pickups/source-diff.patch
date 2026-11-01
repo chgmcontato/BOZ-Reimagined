@@ -1,0 +1,219 @@
+--- a/build/build.sh
++++ b/build/build.sh
+@@ -40,6 +40,8 @@
+ python3 -I "$HERE/patch_smali.py" "$APK/smali"
+ python3 -I "$HERE/patch_text.py" "$APK/assets/blackops_loader.dz"
+ python3 -I "$HERE/patch_s3e.py" "$APK/assets/boz.s3e"
++python3 -I "$HERE/patch_pickups.py" "$APK/assets/boz.s3e"
++python3 -I "$HERE/patch_pickups_console.py"
+ python3 -I "$HERE/menus/menus.py" "$APK/assets/boz_menus.json" >/dev/null
+ python3 -I "$HERE/patch_lib.py" "$APK/lib/armeabi/libs3e_android.so"
+ # ícones dos indicadores de granada desenhados pelo app (Hud.java), recortados dos atlas do HUD do jogo
+--- a/instalar-na-tv.sh
++++ b/instalar-na-tv.sh
+@@ -12,7 +12,7 @@
+ HERE="$(cd "$(dirname "$0")" && pwd)"
+ ROOT="$(dirname "$HERE")"
+ APK="$HERE/BOZ-TV.apk"
+-OBB_SRC="$ROOT/OBB+DATA/obb/com.activision.boz"
++OBB_SRC="$HERE/obb"
+ DATA_SRC="$ROOT/OBB+DATA/data/com.activision.boz"
+ PKG=com.activision.boz
+ 
+--- a/build/patch_pickups.py
++++ b/build/patch_pickups.py
+@@ -0,0 +1,40 @@
++#!/usr/bin/env python3
++"""BOZ 1.0.11 pickups: guarded, idempotent image patches. No assembler needed at build time."""
++import lzma
++import struct
++import sys
++from pathlib import Path
++IMAGE = 0x43f3
++LATCH = 0x2bd
++PATCHES = [[4262912, '000000000000000000000000', '84f8bc5284f8bd52faf5ebbe', 'init: +2bc original, latch=0'], [2144734, '84f8bc52', '05f20fb9', 'constructor latch reset'], [4262944, '00000000000000000000000000000000000000000000', '84f8bc0202b4002802d0012184f8bd1202bc00f675ba', 'vf24: preserve +2bc, latch if active'], [2167068, '84f8bc02', 'fff180bd', 'vf24 latch'], [4262992, '0000000000000000000000000000000000000000000000000000000000000000', 'f8b50fb4052907d1c068f7f57ffe002802d0012180f8bd120fbc0125f0f552ba', 'acquisition: mark latch on perk 5 from any grant'], [2101520, 'f8b50125', '0ff29ebd', 'perk grant latch'], [4263072, '00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', '2de90f50062a14d10ea30f4818440068002814d090f83d32002b10d0084600280dd0f7f54bfe002809d090f8bd32002b05d0bde80f502de9f041f7f527b8bde80f50704700000000ec4b0800', 'ApplyEffect entry: gate only type 6, before all side effects'], [2129192, '2de9f041', '08f2babf', 'Death Machine recipient gate']]
++
++def apply(raw):
++    raw = bytearray(raw)
++    for address, before, after, label in PATCHES:
++        old, new = bytes.fromhex(before), bytes.fromhex(after)
++        off = IMAGE + address
++        current = bytes(raw[off:off + len(old)])
++        if current == new:
++            continue
++        if current != old:
++            raise ValueError('Unexpected bytes at %#x (%s): %s' % (address, label, current.hex()))
++        raw[off:off + len(new)] = new
++        print('%#x %s: %s -> %s' % (address, label, before, after))
++    return bytes(raw)
++
++def main():
++    path = Path(sys.argv[1])
++    packed = path.read_bytes()
++    raw = lzma.decompress(packed, format=lzma.FORMAT_ALONE)
++    changed = apply(raw)
++    if changed == raw:
++        return
++    dictionary = struct.unpack_from('<I', packed, 1)[0]
++    output = lzma.compress(changed, format=lzma.FORMAT_ALONE,
++        filters=[{'id': lzma.FILTER_LZMA1, 'dict_size': dictionary, 'lc': 3, 'lp': 0, 'pb': 2}])
++    output = output[:5] + struct.pack('<Q', len(changed)) + output[13:]
++    assert lzma.decompress(output, format=lzma.FORMAT_ALONE) == changed
++    path.write_bytes(output)
++
++if __name__ == '__main__':
++    main()
+--- a/build/patch_pickups_console.py
++++ b/build/patch_pickups_console.py
+@@ -0,0 +1,50 @@
++#!/usr/bin/env python3
++"""Remove COTD from the normal lightning pool; preserve all other console entries."""
++import sys
++from pathlib import Path
++sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'maps/tools'))
++import console_bin
++import dz
++KEY = b'LightningBoltLevels\0'
++OLD = b'callofthedead|proto\0'
++NEW = b'proto\0'
++
++def patch(data):
++    entries = console_bin.parse(data)
++    matches = [(t, v) for name, t, v in entries if name == 'LightningBoltLevels']
++    if matches == [(console_bin.STR, 'proto')]:
++        return data
++    if matches != [(console_bin.STR, 'callofthedead|proto')]:
++        raise ValueError('Unexpected LightningBoltLevels: %r' % (matches,))
++    pos = data.index(KEY) + len(KEY)
++    assert data[pos:pos+len(OLD)] == OLD
++    result = data[:pos] + NEW + data[pos+len(OLD):]
++    expected = [(name, t, 'proto' if name == 'LightningBoltLevels' else value)
++                for name, t, value in entries]
++    # The existing parser can decode opaque fields as NaN; NaN != NaN.
++    assert repr(console_bin.parse(result)) == repr(expected)
++    return result
++
++def main():
++    root = Path(__file__).resolve().parents[1]
++    path = root / 'maps/mobile/console.bin'
++    old = path.read_bytes(); new = patch(old)
++    if old != new:
++        path.write_bytes(new)
++    obb = root / 'obb/blackops_etc.dz'
++    entries, dirs = dz.entries_of(str(obb))
++    count = 0; changed = False; output = []
++    for directory, name, data, index in entries:
++        if name == 'console.bin':
++            count += 1
++            patched = patch(data)
++            changed |= patched != data
++            data = patched
++        output.append((directory, name, data, index))
++    assert count == 1, count
++    if changed:
++        dz.write(str(obb), output, dirs=dirs)
++    print('LightningBoltLevels: proto (mobile console and OBB; DeathMachineLevels preserved)')
++
++if __name__ == '__main__':
++    main()
+--- a/build/frida/frida_diag_pickups.js
++++ b/build/frida/frida_diag_pickups.js
+@@ -0,0 +1,78 @@
++/* BOZ Reimagined 1.0.11 — diagnóstico somente leitura.
++ * APK final não contém Gadget. Para Frida é necessário dispositivo com frida-server
++ * compatível ou build de teste FRIDA=1 (não confundir com o APK final).
++ * adb connect <IP>:5555  (instalar-na-tv.sh já conecta; NÃO executar para só diagnosticar)
++ * frida -U -f com.activision.boz -l build/frida/frida_diag_pickups.js
++ * Gadget: adb forward tcp:27042 tcp:27042
++ * python3 build/frida/run.py build/frida/frida_diag_pickups.js 60
++ * Testes: 1 energia off; 2 on sem revive; 3 on com revive; 4 revive perdido;
++ * 5 COTD matar George (7 e 8); 6 COTD ciclo normal (sem 8).
++ * 'permitido' significa passou pelo gate, não confirma sucesso ao equipar a arma.
++ */
++(function () {
++  let imageBase = typeof base !== 'undefined' ? base : null;
++  const signature = '2d e9 f0 43 1c 46 66 4b c1 b0 07 46 89 46 7b 44';
++  function install() {
++    if (!imageBase) {
++      for (const range of Process.enumerateRanges('r-x')) {
++        try {
++          const hits = Memory.scanSync(range.base, range.size, signature);
++          if (hits.length) { imageBase = hits[0].address.sub(0x1d4ae0); break; }
++        } catch (_) {}
++      }
++    }
++    if (!imageBase) return false;
++    const at = offset => imageBase.add(offset);
++    const thumb = offset => at(offset).or(1);
++    const controllerOf = new NativeFunction(thumb(0x20895c), 'pointer', ['pointer']);
++    const choose = new Map(), george = new Map();
++    const log = (kind, value) => send(Object.assign({kind: kind}, value));
++    function state(entity) {
++      const level = at(0x4958d0).readPointer();
++      const controller = entity.isNull() ? ptr(0) : controllerOf(entity);
++      const manager = controller.isNull() ? ptr(0) : controller.add(0xa0).readPointer();
++      const power = level.isNull() ? null : level.add(0x23d).readU8();
++      const latch = controller.isNull() ? null : controller.add(0x2bd).readU8();
++      return {entity: entity.toString(), controller: controller.toString(), power: power,
++        everRevive: latch, activeMirror: controller.isNull() ? null : controller.add(0x2bc).readU8(),
++        activeMask: manager.isNull() ? null : manager.add(0x58).readU32(),
++        decision: power !== 1 ? 'bloqueou energia' : !latch ? 'bloqueou revive' : 'permitido'};
++    }
++    function mapName() {
++      const level = at(0x4958d0).readPointer();
++      return level.isNull() ? null : level.add(0x55).readCString();
++    }
++    function fields(p) { return {romero: p.toString(), suppress: p.add(0x116).readU8(),
++      rewardIssued: p.add(0x1b0).readU8()}; }
++    Interceptor.attach(thumb(0x207d28), {onEnter(args) {
++      if (args[2].toInt32() !== 6) return;
++      try { log('death-machine-gate', state(args[1])); } catch(e) { log('error', {where:'ApplyEffect', error:String(e)}); }
++    }});
++    Interceptor.attach(thumb(0x142ce0), {
++      onEnter(args) { this.romero = args[0]; this.previous = george.get(this.threadId);
++        george.set(this.threadId, this.romero); log('george-enter',fields(this.romero)); },
++      onLeave() { log('george-leave',fields(this.romero));
++        if (this.previous) george.set(this.threadId,this.previous); else george.delete(this.threadId); }
++    });
++    Interceptor.attach(thumb(0x205e3c), {onEnter(args) {
++      const romero = george.get(this.threadId);
++      if (romero) log('george-special-request',Object.assign({index:args[1].toInt32()},fields(romero)));
++    }});
++    Interceptor.attach(thumb(0x205eb0), {
++      onEnter() { this.previous = choose.get(this.threadId); choose.set(this.threadId,true); },
++      onLeave() { if(this.previous) choose.set(this.threadId,this.previous); else choose.delete(this.threadId); }
++    });
++    // ChooseDropType returns void. Observe its actual spawn request, including override/cycle result.
++    Interceptor.attach(thumb(0x205d70), {onEnter(args) {
++      if (!choose.get(this.threadId)) return;
++      try {
++        const hash = args[1].toUInt32(); let type = null;
++        for(let i=0;i<9;i++) if(at(0x4a171c+i*4).readU32()===hash) type=i;
++        log('normal-drop-request',{map:mapName(),type:type,hash:hash});
++      } catch(e) { log('error',{where:'ChooseDropType',error:String(e)}); }
++    }});
++    log('ready',{imageBase:imageBase.toString(),latch:'CPlayerController+0x2bd'});
++    return true;
++  }
++  if (!install()) { const timer=setInterval(()=>{if(install())clearInterval(timer);},500); }
++})();
+--- a/build/revert_pickups.sh
++++ b/build/revert_pickups.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++# Reversão dos patches desta entrega; não executa git reset automaticamente.
++# Alternativa DESTRUTIVA para todas as alterações locais:
++#   git reset --hard checkpoint-antes-drops
++# O reset não restaura APK/OBB ignorados; os backups abaixo continuam necessários.
++set -euo pipefail
++HERE="$(cd "$(dirname "$0")" && pwd)"
++ROOT="$(cd "$HERE/.." && pwd)"
++for relative in build/patch_s3e.py build/build.sh instalar-na-tv.sh maps/mobile/console.bin obb/blackops_etc.dz build/out/apk/assets/boz.s3e; do
++  target="$ROOT/$relative"
++  if [[ -f "$target.bak-manual" ]]; then
++    cp -p -- "$target.bak-manual" "$target"
++  fi
++done
++# Scripts novos ficam disponíveis para auditoria, mas o build restaurado não os chama.
++bash "$HERE/build.sh"
++sha256sum "$ROOT/BOZ-TV.apk"

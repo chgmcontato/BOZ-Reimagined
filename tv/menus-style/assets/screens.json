@@ -1,0 +1,439 @@
+{
+ "_doc": "Telas SWF com overlay Android (StyledScreen.java). page = desenhada inteira; windows deixam o SWF aparecer (números dinâmicos). frame = só tarja sobre o título original + rodapé. Coordenadas 1280x720; tap = ponto tocado no SWF original (menus/shots). to = tela que o botão abre ('*' = muda sem destino conhecido); back = destino do B; name = placa com o nome do P1.",
+ "screens": {
+  "single": {
+   "kind": "page",
+   "title": "SINGLE PLAYER",
+   "buttons": [
+    {
+     "id": "new",
+     "title": "NEW GAME",
+     "caption": "START FROM ROUND ONE",
+     "art": "character-menu/background.png",
+     "bounds": [
+      64,
+      170,
+      560,
+      390
+     ],
+     "tap": [
+      433,
+      400
+     ],
+     "action": "selection",
+     "primary": true
+    },
+    {
+     "id": "continue",
+     "title": "CONTINUE",
+     "caption": "RESUME YOUR SAVED RUN",
+     "art": "character-menu/cotd-background.png",
+     "bounds": [
+      656,
+      170,
+      560,
+      390
+     ],
+     "tap": [
+      877,
+      386
+     ],
+     "to": "*"
+    },
+    {
+     "id": "back",
+     "title": "BACK",
+     "bounds": [
+      64,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      267,
+      622
+     ],
+     "to": "main"
+    }
+   ],
+   "back": "main"
+  },
+  "newgame": {
+   "kind": "page",
+   "title": "NEW GAME",
+   "message": [
+    "STARTING A NEW GAME WILL",
+    "DELETE YOUR PREVIOUS SAVE!",
+    "",
+    "ARE YOU SURE YOU WANT TO CONTINUE?"
+   ],
+   "buttons": [
+    {
+     "id": "back",
+     "title": "BACK",
+     "bounds": [
+      64,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      300,
+      593
+     ],
+     "to": "single"
+    },
+    {
+     "id": "ok",
+     "title": "OK",
+     "bounds": [
+      896,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      953,
+      593
+     ],
+     "action": "selection",
+     "primary": true
+    }
+   ],
+   "back": "single"
+  },
+  "quitconfirm": {
+   "kind": "page",
+   "title": "QUIT",
+   "message": [
+    "DO YOU WANT TO QUIT?"
+   ],
+   "buttons": [
+    {
+     "id": "no",
+     "title": "NO",
+     "bounds": [
+      64,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      300,
+      593
+     ],
+     "primary": true,
+     "to": "main"
+    },
+    {
+     "id": "yes",
+     "title": "YES",
+     "bounds": [
+      896,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      953,
+      593
+     ]
+    }
+   ],
+   "back": "main"
+  },
+  "savequit": {
+   "kind": "page",
+   "title": "SAVE & QUIT",
+   "message": [
+    "PREVIOUSLY SAVED DATA WILL BE OVERWRITTEN.",
+    "",
+    "DO YOU WANT TO QUIT?"
+   ],
+   "buttons": [
+    {
+     "id": "no",
+     "title": "NO",
+     "bounds": [
+      64,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      300,
+      587
+     ],
+     "primary": true,
+     "to": "pause"
+    },
+    {
+     "id": "yes",
+     "title": "YES",
+     "bounds": [
+      896,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      995,
+      587
+     ]
+    }
+   ]
+  },
+  "pause": {
+   "kind": "page",
+   "title": "PAUSED",
+   "hint": "D-PAD: NAVIGATE     A: SELECT     START: RESUME",
+   "windows": [
+    [
+     196,
+     270,
+     560,
+     190
+    ]
+   ],
+   "buttons": [
+    {
+     "id": "return",
+     "title": "RETURN",
+     "bounds": [
+      64,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      200,
+      633
+     ],
+     "action": "game",
+     "primary": true
+    },
+    {
+     "id": "settings",
+     "title": "SETTINGS",
+     "bounds": [
+      896,
+      170,
+      320,
+      120
+     ],
+     "tap": [
+      926,
+      126
+     ],
+     "to": "pausesettings"
+    },
+    {
+     "id": "restart",
+     "title": "RESTART",
+     "bounds": [
+      896,
+      305,
+      320,
+      120
+     ],
+     "tap": [
+      940,
+      370
+     ],
+     "to": "*"
+    },
+    {
+     "id": "savequit",
+     "title": "SAVE & QUIT",
+     "bounds": [
+      896,
+      440,
+      320,
+      120
+     ],
+     "tap": [
+      930,
+      583
+     ],
+     "to": "savequit"
+    },
+    {
+     "id": "timer",
+     "title": "TIMER: ON",
+     "bounds": [
+      896,
+      584,
+      320,
+      76
+     ],
+     "action": "timer"
+    }
+   ]
+  },
+  "gameover": {
+   "kind": "page",
+   "title": "GAME OVER",
+   "hint": "D-PAD: NAVIGATE     A: SELECT",
+   "windows": [
+    [
+     240,
+     150,
+     520,
+     340
+    ]
+   ],
+   "buttons": [
+    {
+     "id": "quit",
+     "title": "QUIT",
+     "bounds": [
+      64,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      186,
+      640
+     ],
+     "to": "*"
+    },
+    {
+     "id": "retry",
+     "title": "RETRY",
+     "bounds": [
+      896,
+      584,
+      320,
+      76
+     ],
+     "tap": [
+      1090,
+      633
+     ],
+     "primary": true,
+     "to": "*"
+    }
+   ]
+  },
+  "settings": {
+   "kind": "frame",
+   "title": "SETTINGS",
+   "tag": [
+    160,
+    48,
+    350,
+    72
+   ],
+   "back": "*"
+  },
+  "pausesettings": {
+   "kind": "frame",
+   "title": "SETTINGS",
+   "tag": [
+    60,
+    10,
+    380,
+    90
+   ]
+  },
+  "sensitivity": {
+   "kind": "frame",
+   "title": "SENSITIVITY",
+   "tag": [
+    60,
+    10,
+    380,
+    90
+   ]
+  },
+  "controls": {
+   "kind": "frame",
+   "title": "CONTROLS",
+   "tag": [
+    125,
+    40,
+    540,
+    75
+   ],
+   "back": "*"
+  },
+  "help": {
+   "kind": "frame",
+   "title": "HELP",
+   "tag": [
+    145,
+    45,
+    305,
+    82
+   ],
+   "back": "*"
+  },
+  "coop": {
+   "kind": "frame",
+   "title": "CO-OP",
+   "tag": [
+    145,
+    25,
+    520,
+    90
+   ],
+   "back": "main"
+  },
+  "extras": {
+   "kind": "frame",
+   "title": "EXTRAS",
+   "tag": [
+    190,
+    50,
+    315,
+    70
+   ],
+   "back": "main"
+  },
+  "player_profile": {
+   "kind": "frame",
+   "title": "PLAYER PROFILE",
+   "tag": [
+    168,
+    50,
+    440,
+    80
+   ],
+   "back": "main"
+  },
+  "coopwifi": {
+   "kind": "frame",
+   "title": "CO-OP MULTIPLAYER",
+   "tag": [
+    180,
+    42,
+    512,
+    64
+   ],
+   "back": "coop"
+  },
+  "coopmap": {
+   "kind": "frame",
+   "title": "SELECT MAP",
+   "tag": [
+    160,
+    44,
+    345,
+    72
+   ],
+   "back": "coopwifi"
+  },
+  "cooplobby": {
+   "kind": "frame",
+   "title": "SETUP",
+   "tag": [
+    145,
+    52,
+    255,
+    80
+   ],
+   "back": "*"
+  }
+ }
+}

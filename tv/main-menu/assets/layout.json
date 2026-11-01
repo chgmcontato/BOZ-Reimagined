@@ -1,0 +1,10 @@
+{
+  "items": [
+    {"id":"single", "title":"SINGLE PLAYER", "caption":"ONE SURVIVOR. ENDLESS WAVES.", "art":"character-menu/background.png", "bounds":[64,170,492,390], "tap":[325,195], "to":"single"},
+    {"id":"profile", "title":"PLAYER PROFILE", "caption":"YOUR SURVIVOR RECORD", "art":"main-menu/profile.png", "bounds":[576,170,300,390], "tap":[323,405], "to":"player_profile"},
+    {"id":"coop", "title":"CO-OP MULTIPLAYER", "caption":"SURVIVE TOGETHER", "art":"main-menu/coop.png", "bounds":[896,170,320,390], "tap":[913,167], "to":"*"},
+    {"id":"extras", "title":"EXTRAS / SETTINGS", "caption":"", "bounds":[64,584,400,76], "tap":[913,383], "to":"*"},
+    {"id":"name", "title":"PLAYER NAME", "caption":"", "bounds":[476,584,400,76], "action":"name"},
+    {"id":"quit", "title":"QUIT", "caption":"", "bounds":[896,584,320,76], "tap":[1097,50], "to":"quitconfirm"}
+  ]
+}

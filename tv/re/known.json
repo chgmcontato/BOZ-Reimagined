@@ -1,0 +1,775 @@
+{
+  "_doc": "Nomes dados à mão. functions: offset do INÍCIO da função -> [nome, nota]; sites: endereço DENTRO de uma função (patch, crash, ponto de interesse) -> [rótulo, nota]; data: dados/variáveis. Nome com '?' = deduzido, não confirmado. Fontes: patch_s3e.py, RESUMO.md, build/frida. Depois de editar, rode build/re/gendocs.py.",
+  "functions": {
+    "0x1eaad4": [
+      "main",
+      "chamado pelo crt0 (0x35090); lê [GAME] DeployConfig"
+    ],
+    "0x1c7ef8": [
+      "CGameStateIngame::OnGameEvent?",
+      "eventos de jogo (coop entrou/saiu, jogador pronto, morte -> SetState)"
+    ],
+    "0x1cbe58": [
+      "CHUDManager::UpdateTouchButtons?",
+      "mostra/esconde os botões de toque por [+0x68] canhoto; escolhe grenade_icon e chama 0x2449b2"
+    ],
+    "0x2449b2": [
+      "CUIMultiElement::SetCurrent?",
+      "troca a imagem do grenade_icon (frag_grenade/claymore/monkeyBomb)"
+    ],
+    "0x1d4ae0": [
+      "CIngameStatePlaying::UpdatePOI?",
+      "interação/compra (no_points_lbl, slide_to_spend_lbl); assinatura do run.py"
+    ],
+    "0x1d481c": [
+      "CIngameStatePlaying::ShowInteractionPage?",
+      "abria a página ig_poiXperia"
+    ],
+    "0x1d4a60": [
+      "CIngameStatePlaying::ShowPriceMessage?",
+      "mensagem de 'sem pontos'"
+    ],
+    "0x1dbe2c": [
+      "CInputManager::OnCommand",
+      "vf4; tratador de comandos (r1 = id): 5 reloadChangeWeapon, 8 aim, 11 +tacticalGrenade, 15 alternateFire, 17 toggleFreeMode; patch -> CAVE cmd"
+    ],
+    "0x1dc28c": [
+      "CInputManager::SetAim?",
+      "setter da mira (r1 = 0/1)"
+    ],
+    "0x1bfa68": [
+      "CFrontendStateSinglePlayer::vf9",
+      "START/Continue do single player; só aceitava os mapas originais (patch em 0x1bfc10)"
+    ],
+    "0x1ddb64": [
+      "CLevelManager::LevelSpecificSetup?",
+      "som ambiente etc. por mapa; kino ganha tratamento especial (moon herda)"
+    ],
+    "0x1dd440": [
+      "CLevelManager::CreateLevel?",
+      "acha o CLevel pelo nome (bl 0x26a250 com r1 = G+0x55)"
+    ],
+    "0x26a3c8": [
+      "IwSerialiseManagedHash?",
+      "grava/lê um ponteiro de recurso como hash u32 (IwSerialiseUInt32 0x28cc28); na leitura procura o recurso (0x26a2b0) e grava em *r1. O crash do Moon (str r0,[r4] em 0x26a3fa) = destino r4 inválido: o objeto que está sendo lido (bloco de CIwModel) não existe/estourou — chamado por CIwModel::Serialise e blocos"
+    ],
+    "0x2296c4": [
+      "CSaveDataGame::IsDeadOpsUnlocked?",
+      "save+0xf8; 4 moedas dos menus; patch -> sempre 1"
+    ],
+    "0x245c78": [
+      "CDeviceResolution::GetDeviceClass?",
+      "2 = smartphone, 3 = tablet (TabletThreshold); patch 0x245ce0 -> 2"
+    ],
+    "0x2aaccc": [
+      "IwGxFlush?",
+      "fim do quadro; chama IwGxPrintFrameRate(x,y) em 0x2aacf8 (ARM)"
+    ],
+    "0x2ad888": [
+      "IwGxPrintFrameRate",
+      "ARM"
+    ],
+    "0x2ad7b8": [
+      "IwGxPrintString?",
+      "fila do texto de debug (ARM)"
+    ],
+    "0x2ada94": [
+      "IwGxPrintDraw?",
+      "desenho do texto de debug (ARM)"
+    ],
+    "0x25538c": [
+      "CWeaponManager::GiveItem?",
+      "compra/recebe arma ou item; o caminho do tático (0x255592) descartava o anterior"
+    ],
+    "0x252ecc": [
+      "CWeaponManager::GetTacticalMax?",
+      "claymore 2, outros 3"
+    ],
+    "0x252f02": [
+      "CWeaponManager::GiveItemByHash?",
+      "recria item pelo hash (Continue)"
+    ],
+    "0x2540a8": [
+      "CWeaponManager::OnMaxAmmo?",
+      "Max Ammo: recarrega letal e tático; patch -> CAVE maxammo"
+    ],
+    "0x257c64": [
+      "CWeaponManager::SaveLoad?",
+      "save (0x257d3c: hash/munição/anexo por slot) e Continue (0x257da4: recria por hash)"
+    ],
+    "0x205eb0": [
+      "CPickupManager::ChooseDropType?",
+      "sorteio por peso; patch -> CAVE2 dcycle"
+    ],
+    "0x2060a8": [
+      "CPickupManager::TestDropOnDeath?",
+      "teste por morte e por pontos (limiar)"
+    ],
+    "0x206da4": [
+      "CPickupManager::CPickupManager?",
+      "lê PickupDropOnDeathProbability etc. do console"
+    ],
+    "0x206cf4": [
+      "CPickupManager::Reset?",
+      ""
+    ],
+    "0x2072e0": [
+      "CPickupManager::OnLevelLoad?",
+      "DeathMachineLevels/LightningBoltLevels; chama o reset 0x206cf4"
+    ],
+    "0x207d28": [
+      "CPickupManager::ApplyEffect?",
+      "switch do efeito por tipo (0x207d48)"
+    ],
+    "0x2657ec": [
+      "CIsSector::Build?",
+      "'Sector %s is inverted!' — cai aqui sem a flag 0x120000"
+    ],
+    "0x3328b0": [
+      "CIwUIElement::FindChildByName?",
+      "r1 = nome"
+    ],
+    "0x3342dc": [
+      "CIwUIElement::SetVisible?",
+      ""
+    ],
+    "0x39dd88": [
+      "strcpy",
+      ""
+    ],
+    "0x39d898": [
+      "strcat",
+      ""
+    ],
+    "0x37d3b8": [
+      "operator_new",
+      ""
+    ],
+    "0x280abc": [
+      "IwHashString",
+      "djb2 do nome (usado em toda a reflexão e nos recursos)"
+    ],
+    "0x84348": [
+      "CIsClassInfo::AddProperty",
+      "(classe, spec de propriedade)"
+    ],
+    "0x84684": [
+      "CIsClassInfo::CIsClassInfo",
+      "(this, nome)"
+    ],
+    "0xdd9ce": [
+      "CIsClassInfo::Init?",
+      "(classe, hash do nome, pai)"
+    ],
+    "0x387530": [
+      "__cxa_guard_acquire",
+      ""
+    ],
+    "0x3875a8": [
+      "__cxa_guard_release",
+      ""
+    ],
+    "0x3875b4": [
+      "__cxa_atexit",
+      ""
+    ],
+    "0x39b584": [
+      "memset",
+      ""
+    ],
+    "0x387510": [
+      "__cxa_pure_virtual",
+      "slot virtual puro (classe abstrata); aparece em ~1180 vtables"
+    ],
+    "0x280c20": [
+      "IwClassFactoryAdd",
+      "(nome da classe, função de criação): ver fabricas.md"
+    ],
+    "0xf9c4a": [
+      "CIsStateMachine::AddState?",
+      "(máquina, objeto do estado, id): estados da partida em 0x1c7098"
+    ],
+    "0x1c7098": [
+      "CGameStateIngame::CGameStateIngame?",
+      "cria os 14 estados da partida (ids em jogo-estados/README)"
+    ],
+    "0x1c1968": [
+      "CGame::CGame?",
+      "cria os estados de topo"
+    ],
+    "0x39ae50": [
+      "memcpy",
+      "ARM; confirmado pelo BOZ-NX (hook RVA_NATIVE_MEMCPY); antes chamado de strncpy nos scripts Frida"
+    ],
+    "0x381238": [
+      "IwMemBucketMalloc?",
+      "alocador do jogo (BOZ-NX hook RVA_MGR_MALLOC)"
+    ],
+    "0x381254": [
+      "IwMemBucketFree?",
+      "BOZ-NX hook RVA_MGR_FREE"
+    ],
+    "0x381270": [
+      "IwMemBucketRealloc?",
+      "BOZ-NX hook RVA_MGR_REALLOC"
+    ],
+    "0x1549f4": [
+      "CAnalogTouchPad::UpdateLook?",
+      "eixos de mira do touchpad; BOZ-NX escala a sensibilidade em 0x154bcc (depois do clamp ±1)"
+    ],
+    "0x2546d0": [
+      "CWeaponManager::UpdateCamera?",
+      "atualização da câmera/visão (BOZ-NX hook de FOV em 0x2546d0, literal 0x00250e7e em 0x25488c)"
+    ],
+    "0x1c80f0": [
+      "CGameStateIngame::Render",
+      "vf6 (+0x18); BOZ-NX SPLIT_RENDER"
+    ],
+    "0x2a5d44": [
+      "IwGxImage handlers?",
+      "registro/despacho de conversores de imagem (BOZ-NX: 0x2a6130 'image handler ready')"
+    ],
+    "0x244f64": [
+      "CUIPageManager::FindElement?",
+      "(r1 = nome do elemento, r3 = g_CUIPageManager 0x4986cc): acha um elemento do HUD/página pelo nome"
+    ],
+    "0x335f9c": [
+      "CIwUIElement::SetVisible?",
+      "r1 = 0/1 (usado com Headshot_Image em 0x1cad30)"
+    ],
+    "0x33ac44": [
+      "CIwUILabel::SetCaption?",
+      "texto do rótulo (depois de sprintf '%d')"
+    ],
+    "0x39d664": [
+      "sprintf",
+      "ARM"
+    ],
+    "0x1cd36c": [
+      "CHUDManager::Update?",
+      "chamado por CIngameStatePlaying::vf2 a cada quadro; chama os atualizadores abaixo"
+    ],
+    "0x1cad30": [
+      "CHUDManager::UpdateHeadshotAndGrenadeLabels?",
+      "Headshot_Image/Label e Grenade_Label ('%d' = quantidade)"
+    ],
+    "0x1cac24": [
+      "CHUDManager::UpdatePerkIcons?",
+      "Perk_*_Image"
+    ],
+    "0x1caefc": [
+      "CHUDManager::UpdatePowerupIcons?",
+      "Death_Machine/Double_Points/Fire_Sale/Insta_Kill_Image"
+    ],
+    "0x1cb7f8": [
+      "CHUDManager::UpdateAmmo?",
+      "ammo_images, *_bullets, Clip_Label '%d/%d'"
+    ],
+    "0x1cb378": [
+      "CHUDManager::UpdateLowAmmo?",
+      "Low_Ammo_Label, No_Ammo_Label"
+    ],
+    "0x1cbc54": [
+      "CHUDManager::ShowScorePoints?",
+      "Score_Points e pontos flutuantes (HUDPoints*)"
+    ],
+    "0x1cc65c": [
+      "CHUDManager::UpdateRoundTally?",
+      "wave_1..9 / 10_waves_or_more (marcas do round)"
+    ],
+    "0x1cdaf8": [
+      "CHUDManager::LoadIcons?",
+      "hud_icons/HUD_ALL, uv0/uv1 (recortes do atlas)"
+    ],
+    "0x1cd254": [
+      "CHUDManager::UpdateRevive?",
+      "Player_Revive, revive_progress"
+    ],
+    "0x1cd6d4": [
+      "CHUDManager::CHUDManager?",
+      "HUDPointsMaxCount"
+    ],
+    "0x1d52e0": [
+      "CIngameStatePlaying::Update?",
+      "vf2; chama CHUDManager::Update"
+    ],
+    "0x26a2b0": [
+      "CIwResManager::GetResHashed?",
+      "(hash, tipo) -> recurso; cita CIwTexture"
+    ],
+    "0x28cc28": [
+      "IwSerialiseUInt32?",
+      "(ptr, nº, bits=32, tamanho=4): s3eFileRead/Write conforme o modo"
+    ],
+    "0x26a250": [
+      "CIwResManager::FindByHash?",
+      "mapa em this+0x44, chave r1 (busca do CLevel pelo nome)"
+    ]
+  },
+  "sites": {
+    "0x1c7f2c": [
+      "patch morte",
+      "SetState(11 Quick Revive) -> SetState(4 Game Over)"
+    ],
+    "0x1d4860": [
+      "patch ig_poiXperia",
+      "cbz -> b: não abre a página do botão X"
+    ],
+    "0x1d4bfc": [
+      "patch COD Points",
+      "sempre a mensagem normal de 'sem pontos'"
+    ],
+    "0x1d1ede": [
+      "patch COD Points",
+      "saldo na pausa SetVisible(0)"
+    ],
+    "0x1d4044": [
+      "patch COD Points",
+      "saldo na partida SetVisible(0)"
+    ],
+    "0x1bfc10": [
+      "patch mapas novos",
+      "bne -> nop: START aceita qualquer mapa"
+    ],
+    "0x1ddc4c": [
+      "kino especial",
+      "o moon herda o tratamento do kino"
+    ],
+    "0x1dd568": [
+      "busca do CLevel",
+      "bl 0x26a250 com r1 = G+0x55"
+    ],
+    "0x1dbfc6": [
+      "patch recarregar",
+      "toque rápido do X recarrega"
+    ],
+    "0x1dc0e8": [
+      "patch recarregar",
+      "sempre recarrega"
+    ],
+    "0x1dc116": [
+      "patch recarregar",
+      "não desarma"
+    ],
+    "0x1dbefe": [
+      "patch mira",
+      "alternateFire = sair da mira"
+    ],
+    "0x1cc078": [
+      "patch HUD",
+      "início dos ~50 patches que escondem os botões de toque (até 0x1cc368)"
+    ],
+    "0x2aacf8": [
+      "patch FPS",
+      "posição do IwGxPrintFrameRate"
+    ],
+    "0x255592": [
+      "patch tático",
+      "-> CAVE buy"
+    ],
+    "0x2555c4": [
+      "reabastece tático",
+      ""
+    ],
+    "0x257d3c": [
+      "save das armas",
+      "registro por slot"
+    ],
+    "0x257d78": [
+      "patch save",
+      "-> CAVE2 savehook"
+    ],
+    "0x257da4": [
+      "Continue das armas",
+      ""
+    ],
+    "0x257e64": [
+      "patch Continue",
+      "-> CAVE2 loadhook"
+    ],
+    "0x25715e": [
+      "patch reset1",
+      "-> CAVE reset1"
+    ],
+    "0x255ba4": [
+      "patch reset2",
+      "-> CAVE reset2"
+    ],
+    "0x2540b8": [
+      "patch maxammo",
+      "-> CAVE maxammo"
+    ],
+    "0x206ee0": [
+      "gerenciador de drops",
+      ""
+    ],
+    "0x205fc2": [
+      "patch drop",
+      "-> CAVE2 dcycle"
+    ],
+    "0x206144": [
+      "patch limiar",
+      "-> CAVE2 thrhook"
+    ],
+    "0x2072e6": [
+      "patch dreset",
+      ""
+    ],
+    "0x207d48": [
+      "switch do efeito",
+      "tipos 0 Insta-Kill, 1 Double Points, 2 Max Ammo, 3 Nuke, 4 Carpenter, 5 Fire Sale, 6 Death Machine, 8 Lightning Bolt"
+    ],
+    "0x26a3fa": [
+      "crash moon",
+      "store em ponteiro nulo (14 pedaços)"
+    ],
+    "0x245ce0": [
+      "patch classe",
+      "-> smartphone"
+    ]
+  },
+  "data": {
+    "0x1bfe10": [
+      "g_LevelIdToName?",
+      "tabela id -> nome de mapa (tutorial/kino/proto/ascension/deadops/callofthedead/cotdeadops)"
+    ],
+    "0x410800": [
+      "CAVE",
+      "código novo do port (patch_s3e.py): tático duplo"
+    ],
+    "0x410900": [
+      "CAVE2",
+      "código novo do port: ondas BO1, drops, save do banco"
+    ],
+    "0x4108f0": [
+      "g_TacticalBank",
+      "item, quantidade, jogador, marca (Hud.java lê aqui)"
+    ],
+    "0x410ac0": [
+      "g_DropCycle",
+      "máscara do ciclo, limiar atual, máscara de bloqueados"
+    ],
+    "0x43ab80": [
+      "vtable CWave",
+      "+0x50 total, +0x54 contagem"
+    ],
+    "0x43ac48": [
+      "vtable CWaveRepeatable",
+      ""
+    ],
+    "0x43ad10": [
+      "vtable CWaveSpeciality",
+      "cachorros"
+    ],
+    "0x3e395f": [
+      "str 'proto'",
+      "vira 'moon' (patch)"
+    ],
+    "0x3fef3e": [
+      "str FPS",
+      "formato do contador de FPS"
+    ],
+    "0x450970": [
+      "g_IwGxDebugTextScale",
+      "1 -> 2 (patch)"
+    ],
+    "0x4958d0": [
+      "g_CLevelManager?",
+      "bss; usado nos scripts Frida (lvlname/lvlset/slot204): +0x55 nome do mapa"
+    ],
+    "0x4958c4": [
+      "g_CWaveManager?",
+      "bss; usado em wave.js"
+    ],
+    "0x496858": [
+      "g_CIsComponentTable<CBarricade>",
+      "bss; cabeça em +4 (ver CAVE2 wcount)"
+    ],
+    "0x4a171c": [
+      "g_PickupTypeHashes",
+      "bss; hashes dos 9 tipos de drop, preenchidos em execução"
+    ]
+  },
+  "nx": {
+    "0x4bac0": [
+      "",
+      "source/main.c:3653",
+      "(void)mem; (void)user; g_clock_queries++; s3eTimerGetMs and s3eTimerGetUST return uint64 in r0:r1. Only r0 was ever set, so the high half was whatever r1 held: harmless where the game keeps the low word, but Demonware's socket wrapper (RVA 0x16a30) stores all 64 bits as a connection's start time and times the connection out"
+    ],
+    "0x83f40": [
+      "",
+      "tests/test_split_game.py:95",
+      "} seen=[] def intercept(uc,address,size,user): rva=address-BASE if rva==0x4eeb0: key=(uc.reg_read(UC_ARM_REG_R0),uc.reg_read(UC_ARM_REG_R1))"
+    ],
+    "0xb6998": [
+      "",
+      "source/main.c:2657",
+      "The block below is skipped when down is 0, so publish the position here or the \"position only\" update carries nothing. touch_update happens to have set g_tap from the contact already, but the stick cursor has no such side effect, and the guest's hover path (RVA 0x81908: obj+0x60 := widget under the pointer, only while NOT touching) is the whole point of this update."
+    ],
+    "0xb6a56": [
+      "",
+      "source/main.c:2756",
+      "if (g_saw_real_input) { g_ptr_state = S3E_PTR_UP; Button up: the getters follow the cursor, as a mouse's would. The guest only moves its hover widget (obj+0x60, RVA 0x81908) while the pointer is up, and it sends the press to THAT widget (RVA 0x819c6), so a docked stick cursor that is invisible until A is pressed hits"
+    ],
+    "0xc4630": [
+      "",
+      "source/main.c:1278",
+      "#define TAP_HOLD_UPDATES 6 /* Updates held down before release s3ePointerState. These are DISCRETE values, not bit flags -- verified against the game's own comparisons: RVA 0x08f5a0: subs r3,r0,#1 / cmp r3,#1 / movls => \"touching\" iff state is in {1,2}, so DOWN and PRESSED are 1 and 2 and"
+    ],
+    "0xf25c8": [
+      "",
+      "tests/test_split_game.py:99",
+      "if rva==0x4eeb0: key=(uc.reg_read(UC_ARM_REG_R0),uc.reg_read(UC_ARM_REG_R1)) assert key in lookups,tuple(hex(v) for v in key) seen.append(key);uc.reg_write(UC_ARM_REG_R0,lookups[key]) elif rva==0xbd538: text=bytes(uc.mem_read(uc.reg_read(UC_ARM_REG_R0),11))"
+    ],
+    "0xfb596": [
+      "",
+      "source/main.c:1490",
+      "Arm on a frame count so the tap lands after output has stabilised; the sequence itself then advances on s3ePointerUpdate, which is the SDK's contract -- transient states (PRESSED/RELEASED) are visible until the next Update, not until the next frame. The game calls Update exactly once per frame from RVA 0x0c6506, so in practice the two coincide, but driving it from Update is what a real s3e impleme"
+    ],
+    "0x10c3e6": [
+      "",
+      "source/main.c:4377",
+      "cpu->r[0] = 0; } s3eSoundChannelPause / Resume(channel). The game pauses every live sound instance when its pause menu opens (RVA 0xd7356 walks the instance list and calls each one's pause) and resumes them on the way out. Both used to be"
+    ],
+    "0x10c676": [
+      "",
+      "source/main.c:3986",
+      "5 AVAILABLE 7 STEREO anything else -1 This used to answer 0 with the channel count and 3 with 1. The game copies property 3 into its sound manager's channel limit and rejects any free channel at or above it (RVA 0xd75e6), so it could only ever use channel 0: a sound that started while another was playing was simply dropped. And"
+    ],
+    "0x10c6b6": [
+      "",
+      "source/main.c:4271",
+      "} } The game's own generator first. Its sound manager registers an S3E_CHANNEL_GEN_AUDIO callback on the channel for EVERY sample type before it plays (RVA 0xd7626 / 0xd764e / 0xd7674) and expects the platform to pull decoded audio from it -- which is exactly how the"
+    ],
+    "0x10c739": [
+      "",
+      "source/main.c:4278",
+      "happened to be IMA ADPCM with a descriptor we could decode ourselves, so everything of the other two was silent. The native paths below remain only for a play with no generator registered. Except IMA ADPCM, which we decode natively. The game's ADPCM generator (RVA 0xd76a9 -> 0xd65c8) reads the very descriptor it sets through property 2 right before such a play, and running it cost"
+    ],
+    "0x10d684": [
+      "",
+      "source/main.c:4381",
+      "instance when its pause menu opens (RVA 0xd7356 walks the instance list and calls each one's pause) and resumes them on the way out. Both used to be no-ops, so whatever was playing carried on under the pause menu. STATUS (GetInt 4) stays 1 while paused and PAUSED (GetInt 5) says 1: IsPlaying (RVA 0xd85f4) reads the pair exactly that way. static void snd_channel_set_paused(GuestCpu *cpu, int paused"
+    ],
+    "0x10d8b0": [
+      "",
+      "source/main.c:4854",
+      "service_finished_sound.) This port queued the handler for later and threw the answer away, so every sound stopped after one pass. That is what made the teleporter loop forever. Its sound is meant to repeat a fixed number of times: the game's handler (RVA 0xd8820) counts a repeat counter down and keeps returning \"continue\" until it runs out. Stopped after"
+    ],
+    "0x1124fe": [
+      "",
+      "source/main.c:3559",
+      " Property ids as the reference's QUERY table has them; 2 is the pitch. Property 11 is a SCREEN ORIENTATION in quarter turns (0-3), not a flag: RVA 0x0dd46e reads it, then computes `stored_orientation - prop11` and adds 4 if negative -- a rotation delta mod 4. RVA 0x2776ac feeds it straight into"
+    ],
+    "0x112566": [
+      "",
+      "source/main.c:2839",
+      "cpu->r[0] = (uint32_t)g_tap_y; } s3ePointerProperty. The game queries 4 (MULTI_TOUCH_AVAILABLE, compared ==1 at RVA 0x0dd4d6/0x0ddcd4) and 2 (TYPE, compared ==1 i.e. MOUSE, at RVA 0x149f7e). Answering TYPE=2 (STYLUS) takes the touch path rather than the"
+    ],
+    "0x112ab0": [
+      "",
+      "source/main.c:1411",
+      "buf = galloc(16); if (!*buf) return; { m_TouchID, m_Pressed, m_x, m_y } -- read off the game's own handler at RVA 0xdda20, which does `ldm r1,{r0,r1,r2,r3}`, tests word[1] with cbz as a boolean, uses word[0] to index its table of live touches, and"
+    ],
+    "0x112bbc": [
+      "",
+      "source/main.c:1477",
+      "if (!*buf) buf = galloc(12); if (!*buf) return; { m_TouchID, m_x, m_y } -- the handler at RVA 0xddb2c does `ldm r1,{r0,r1,r2}` and passes words 1 and 2 to the same coordinate"
+    ],
+    "0x119bee": [
+      "",
+      "source/main.c:1282",
+      "RVA 0x08f5a0: subs r3,r0,#1 / cmp r3,#1 / movls => \"touching\" iff state is in {1,2}, so DOWN and PRESSED are 1 and 2 and OR-ing them (3) would read as NOT touching. RVA 0x0e5034: cmp r0,#1 => exact test for DOWN. RVA 0x0e4b5e: cmp r0,#0 / beq => UP is 0. RELEASED is not compared anywhere in the image; 3 is the documented SDK"
+    ],
+    "0x11a0c4": [
+      "",
+      "source/main.c:1281",
+      "against the game's own comparisons: RVA 0x08f5a0: subs r3,r0,#1 / cmp r3,#1 / movls => \"touching\" iff state is in {1,2}, so DOWN and PRESSED are 1 and 2 and OR-ing them (3) would read as NOT touching. RVA 0x0e5034: cmp r0,#1 => exact test for DOWN. RVA 0x0e4b5e: cmp r0,#0 / beq => UP is 0."
+    ],
+    "0x14dc78": [
+      "",
+      "source/main.c:715",
+      "\"at lookup #%d\\n\", slot, (unsigned)registered, (unsigned)format, repairs); } RVA 0x118be8 is the positive half of an angle-normalisation loop: "
+    ],
+    "0x1bd6f2": [
+      "",
+      "source/main.c:387",
+      "} cpu->r[0] = s; } The frontend's low-memory dialog is selected at RVA 0x188662. It asks s3eDeviceGetInt(6) for the device-memory figure, then compares it with"
+    ],
+    "0x1c47dc": [
+      "",
+      "source/main.c:6281",
+      "startup_stage_write(\"06 guest memory mapped\"); #ifdef __SWITCH__ { /* Player name. The game builds its online name with sprintf(name, \"Player-%d\", n) through one PC-relative literal (RVA 0x18f74c, used by the add-pc at 0x18f606). Repointing that literal at a plain string makes the sprintf produce it verbatim --"
+    ],
+    "0x1c5984": [
+      "",
+      "source/main.c:4636",
+      "s3eTimerCancelTimer(fn, userData) removes it. Both were unbound, so they fell to hle_default -- \"success\" -- and the callback never ran. The main menu's music is exactly such a callback. GameStateFrontEnd arms a 1500 ms timer (RVA 0x190ac2) whose handler (RVA 0x1908f4) asks the music manager for blackops-music/mus_theatre_underscore.mp3, and cancels it again on"
+    ],
+    "0x1c5b52": [
+      "",
+      "source/main.c:4636",
+      "s3eTimerCancelTimer(fn, userData) removes it. Both were unbound, so they fell to hle_default -- \"success\" -- and the callback never ran. The main menu's music is exactly such a callback. GameStateFrontEnd arms a 1500 ms timer (RVA 0x190ac2) whose handler (RVA 0x1908f4) asks the music manager for blackops-music/mus_theatre_underscore.mp3, and cancels it again on"
+    ],
+    "0x1c5bca": [
+      "",
+      "source/main.c:4638",
+      " The main menu's music is exactly such a callback. GameStateFrontEnd arms a 1500 ms timer (RVA 0x190ac2) whose handler (RVA 0x1908f4) asks the music manager for blackops-music/mus_theatre_underscore.mp3, and cancels it again on the way out (RVA 0x190b3a) just before stopping the music -- which is the s3eAudioStop every session logged at the menu-to-game transition, stopping a"
+    ],
+    "0x1c80f0": [
+      "SPLIT_RENDER_RVA",
+      "source/split_probe.h:11",
+      "extern \"C\" { #endif Supported v1.0.11 image only. All addresses are RVAs, never heap pointers. #define SPLIT_RENDER_RVA 0x193060u #define SPLIT_RENDER_LITERAL_RVA 0x193270u"
+    ],
+    "0x1c8300": [
+      "SPLIT_RENDER_LITERAL_RVA",
+      "source/split_probe.h:12",
+      "#endif Supported v1.0.11 image only. All addresses are RVAs, never heap pointers. #define SPLIT_RENDER_RVA 0x193060u #define SPLIT_RENDER_LITERAL_RVA 0x193270u #define SPLIT_RENDER_LITERAL 0x002d47a4u"
+    ],
+    "0x1eef34": [
+      "",
+      "source/main.c:4029",
+      "0 VOLUME (0..256) 1 STATUS (0 stopped, 1 playing, 2 paused) 4 CHANNEL (selected stream) 5 NUM_CHANNELS 6, 9 AVAILABLE else -1 The music manager polls STATUS every frame and wipes its state -- a queued track included -- the moment it reads 0 (RVA 0x1b9ea4), so a PAUSED stream has to say 2, not 0. There is one stream here, so only channel 0 selects."
+    ],
+    "0x2742b8": [
+      "",
+      "source/main.c:222",
+      "g_live_bytes -= g_allocs[i].size; Do not recycle. The game holds pointers to blocks it has freed -- at least two of them: the image-conversion registry keeps a handler that the string assignment at RVA 0x27e6d8 then reuses and writes 98 times, and the object read at RVA 0x23f228 has the same shape. Handing a freed block straight back out turns each of those into a different object's"
+    ],
+    "0x27827c": [
+      "",
+      "source/s3e_config.h:95",
+      "It matters because the file holds the engine's real sizes -- VertCacheSizeHW 120000, DataCacheSizeHW 5000000, MaxTextureStages 32, NumMemBuckets 14 -- and without them the game falls back to compile-time defaults. A vertex array sized by a too-small default, filled from an asset whose element count comes from the data, is what overruns at RVA 0x2431ec. "
+    ],
+    "0x2a612c": [
+      "",
+      "source/main.c:631",
+      "g_fast_mem_bytes[1] += len; } The image-conversion registry is built by RVA 0x2720d4. It owns four tiny format handlers, then the dispatcher at RVA 0x27109c looks one up and immediately calls vtable[5]."
+    ],
+    "0x2a6130": [
+      "RVA_IMAGE_HANDLER_READY",
+      "source/main.c:641",
+      "before the dispatcher dereferences it. This is intentionally narrower than a general NULL-vtable workaround: another broken object must still fault and identify itself. #define RVA_IMAGE_HANDLER_READY 0x2710a0u "
+    ],
+    "0x2a614c": [
+      "",
+      "source/main.c:635",
+      "format handlers, then the dispatcher at RVA 0x27109c looks one up and immediately calls vtable[5]. On hardware a later memset clears these objects while the registry continues to point at them. That produced the fault at RVA 0x2710bc (load from address 0x14). Repair only a verified registry singleton, at the last safe point"
+    ],
+    "0x2a7164": [
+      "",
+      "source/main.c:630",
+      "g_fast_mem_hits[1]++; g_fast_mem_bytes[1] += len; } The image-conversion registry is built by RVA 0x2720d4. It owns four tiny format handlers, then the dispatcher at RVA 0x27109c looks one up and"
+    ],
+    "0x2ac73c": [
+      "",
+      "source/main.c:3560",
+      "Property ids as the reference's QUERY table has them; 2 is the pitch. Property 11 is a SCREEN ORIENTATION in quarter turns (0-3), not a flag: RVA 0x0dd46e reads it, then computes `stored_orientation - prop11` and adds 4 if negative -- a rotation delta mod 4. RVA 0x2776ac feeds it straight into a 4-entry jump table (`cmp r0,#3` / `addls pc,pc,r0,lsl #2`). If this"
+    ],
+    "0x2b090c": [
+      "",
+      "source/main.c:3565",
+      "a 4-entry jump table (`cmp r0,#3` / `addls pc,pc,r0,lsl #2`). If this disagrees with what the game has stored, it picks a ROTATED blit path and writes turned pixels into the buffer. BOZ_ORIENT sweeps it without a rebuild. Property 6 is queried too (RVA 0x27b87c) and is almost certainly the device pitch; answering 0 for a pitch invites a divide-by-zero or a degenerate"
+    ],
+    "0x2b0c38": [
+      "",
+      "source/main.c:3595",
+      "cpu->r[0] = v; } s3eGLGetInt(0) is S3E_GL_VERSION. The game compares it against **0x100** at three sites (RVA 0x27bba8, 0x27ffa8, 0x2c96d4), so the encoding is packed major/minor -- 0x100 = 1.0, 0x110 = 1.1, 0x200 = 2.0 -- NOT the 0x11 the"
+    ],
+    "0x2b3768": [
+      "",
+      "source/main.c:221",
+      "if (g_live_bytes >= g_allocs[i].size) g_live_bytes -= g_allocs[i].size; Do not recycle. The game holds pointers to blocks it has freed -- at least two of them: the image-conversion registry keeps a handler that the string assignment at RVA 0x27e6d8 then reuses and writes 98 times, and the object read at RVA 0x23f228 has the same shape. Handing a freed"
+    ],
+    "0x2fc5bc": [
+      "",
+      "source/gl_egl.c:18",
+      "exactly the four-call sequence measured on hardware: eglGetCurrentContext, eglGetDisplay(0), eglInitialize, eglGetError. NOTHING HERE MAY CALL eglGetError(). It clears the error as it reads it, and the guest's initialiser (RVA 0x2c752c) decides whether EGL came up by doing bl eglGetError ; cmp r0, #0x3000 ; beq success"
+    ],
+    "0x30e138": [
+      "",
+      "source/gl_egl.c:1253",
+      "client address when no buffer is bound, a byte OFFSET when one is. The generated thunks translate it as an address either way, so with a VBO bound a small offset like 0 or 12 becomes a bogus guest pointer. This game does use buffer objects -- there is a real glGenBuffers/glBindBuffer glBufferData routine at RVA 0x2d90a8 -- so the binding is tracked here and offsets are passed through untranslated."
+    ],
+    "0x37f36c": [
+      "",
+      "source/main.c:3678",
+      "to port from run_boz.py. static unsigned g_stub_calls[512]; static uint32_t g_memory_bucket; RVA 0x34a2dc proves property 0 is the current allocation bucket: the wrapper saves GetInt(0), SetInt(0,7), allocates, then restores SetInt(0,saved)."
+    ],
+    "0x381238": [
+      "RVA_MGR_MALLOC",
+      "source/main.c:502",
+      " Up here because hook_free consults the registry; the handler-repair code below uses the same constant. #define RVA_IMAGE_HANDLER_SLOTS 0x49fd88u #define RVA_MGR_MALLOC 0x34c1a8u #define RVA_MGR_FREE 0x34c1c4u"
+    ],
+    "0x381254": [
+      "RVA_MGR_FREE",
+      "source/main.c:503",
+      "Up here because hook_free consults the registry; the handler-repair code below uses the same constant. #define RVA_IMAGE_HANDLER_SLOTS 0x49fd88u #define RVA_MGR_MALLOC 0x34c1a8u #define RVA_MGR_FREE 0x34c1c4u #define RVA_MGR_REALLOC 0x34c1e0u"
+    ],
+    "0x381270": [
+      "RVA_MGR_REALLOC",
+      "source/main.c:504",
+      "below uses the same constant. #define RVA_IMAGE_HANDLER_SLOTS 0x49fd88u #define RVA_MGR_MALLOC 0x34c1a8u #define RVA_MGR_FREE 0x34c1c4u #define RVA_MGR_REALLOC 0x34c1e0u "
+    ],
+    "0x39ae50": [
+      "RVA_NATIVE_MEMCPY",
+      "source/main.c:563",
+      "Verified ARM EABI memory primitives in this exact image. Kept under dynarmic because their cost is amortised over the bytes they move rather than paid per call. The normal non-observe hook return preserves ARM/Thumb interworking through LR. #define RVA_NATIVE_MEMCPY 0x365dc0u #define RVA_NATIVE_MEMSET 0x3664f4u"
+    ],
+    "0x39b584": [
+      "RVA_NATIVE_MEMSET",
+      "source/main.c:564",
+      "dynarmic because their cost is amortised over the bytes they move rather than paid per call. The normal non-observe hook return preserves ARM/Thumb interworking through LR. #define RVA_NATIVE_MEMCPY 0x365dc0u #define RVA_NATIVE_MEMSET 0x3664f4u static uint64_t g_fast_mem_bytes[2];"
+    ],
+    "0x3f1050": [
+      "",
+      "source/native_exec.c:21",
+      "_Static_assert(offsetof(GuestCpu, fpscr) == 324, \"assembly FPSCR frame\"); _Static_assert(sizeof(GuestCpu) == 332, \"assembly frame size\"); Verified against the imported image hash at boot. Default SDK functions reach RVA 0x3bbfc0; writable tables start later. Validate on hardware. #define IMAGE_BASE 0x00800000u"
+    ],
+    "0x41b320": [
+      "vtable 9CIsCamera",
+      "tests/test_split_game.py:23",
+      ""
+    ],
+    "0x42f4a8": [
+      "vtable 12CGameNetwork",
+      "tests/test_split_game.py:23",
+      ""
+    ],
+    "0x42f708": [
+      "vtable 16CGameStateIngame",
+      "tests/test_split_game.py:22",
+      ""
+    ],
+    "0x432258": [
+      "vtable 13CInputManager",
+      "tests/test_split_game.py:22",
+      ""
+    ],
+    "0x435828": [
+      "vtable 17CPlayerController",
+      "tests/test_split_game.py:20",
+      ""
+    ],
+    "0x4369f8": [
+      "vtable 13CRemotePlayer",
+      "tests/test_split_game.py:20",
+      ""
+    ],
+    "0x43ba68": [
+      "vtable 14CWeaponManager",
+      "tests/test_split_game.py:21",
+      ""
+    ],
+    "0x43bba0": [
+      "vtable 6CWorld",
+      "tests/test_split_game.py:21",
+      ""
+    ],
+    "0x4d4e18": [
+      "RVA_IMAGE_HANDLER_SLOTS",
+      "source/main.c:501",
+      "intercept the wrappers directly. RVAs from the Unicorn bring-up. Up here because hook_free consults the registry; the handler-repair code below uses the same constant. #define RVA_IMAGE_HANDLER_SLOTS 0x49fd88u #define RVA_MGR_MALLOC 0x34c1a8u"
+    ]
+  }
+}

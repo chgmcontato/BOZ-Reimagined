@@ -1,0 +1,327 @@
+diff --git a/build/java/com/carlos/boz/Hud.java b/build/java/com/carlos/boz/Hud.java
+index c19828c..5e9802c 100644
+--- a/build/java/com/carlos/boz/Hud.java
++++ b/build/java/com/carlos/boz/Hud.java
+@@ -30,12 +30,16 @@ final class Hud {
+     private static final byte[] SIG = {(byte) 0x2d, (byte) 0xe9, (byte) 0xf0, 0x43, 0x1c, 0x46, 0x66, 0x4b,
+             (byte) 0xc1, (byte) 0xb0, 0x07, 0x46, (byte) 0x89, 0x46, 0x7b, 0x44};
+     private static final long SIG_OFFSET = 0x1d4ae0;
++    private static final long TIMER = 0x410700;    // snapshot nativo, patch_s3e.py/timer.s
++    private static final int TIMER_MAGIC = 0x54494d31;
+     private static final long BANK = 0x4108f0;      // item, quantidade, jogador (patch_s3e.py, CAVE)
+     // jogador: letal [+0x1ec] / quantidade [+0x1cc]; tático [+0x1f0] / [+0x1d0]; item: hash do nome em [+0x5c]
+     private static final int FRAG = 0x595f545a, MONKEY = 0x1561c758, CLAYMORE = 0x3dc9e501;
+ 
+     /** Posição dos indicadores, em pixels da tela do jogo (1280x720): coluna à direita, onde ficava o do jogo. */
+     private static final float HUD_X = 1180, HUD_Y = 280, ROW = 54, ICON = 44, DIGIT_H = 40;
++    // Abaixo da arma/munição (y=0..110), acima das granadas (y=280).
++    private static final float TIMER_X = 1232, TIMER_Y = 180;
+     private static final long POLL_MS = 250;
+ 
+     private final Cursor m_Cursor;
+@@ -48,6 +52,9 @@ final class Hud {
+     private long m_Base = -1;
+     private long m_NextSearch;      // a busca pela imagem lê alguns MB: no máximo a cada 2 s
+     private volatile int[] m_Counts = {-1, -1, -1};   // frag, monkey, claymore (-1 = não tem)
++    private volatile TimerSnapshot m_Timer;
++    private final java.util.concurrent.atomic.AtomicInteger m_TimerFence = new java.util.concurrent.atomic.AtomicInteger();
++    private int m_LastSaveStatus;
+     private boolean m_Leaving;      // Save & Quit / Quit escolhido: esconde até a próxima partida
+ 
+     Hud(Activity activity, Cursor cursor, Handler main) {
+@@ -78,14 +85,27 @@ final class Hud {
+             }
+             int[] c = read();
+             boolean show = c != null && screen == null && !m_Leaving && !m_Cursor.isMenuMode();
++            TimerSnapshot timer = readTimer();
++            boolean showTimer = timer != null && timer.active && screen == null
++                    && !m_Leaving && !m_Cursor.isMenuMode();
++            boolean mainTotal = timer != null && "main".equals(screen);
++            boolean profileTotal = timer != null && timer.profile && !timer.active && !mainTotal;
++            TimerSnapshot previous = m_Timer;
++            boolean timerChanged = timer == null ? previous != null : !timer.sameDisplay(previous);
++            m_Timer = timer;
+             int[] old = m_Counts;
+             if (c == null)
+                 c = new int[]{-1, -1, -1};
+-            if (!java.util.Arrays.equals(c, old) || show != m_View.m_Show) {
++            if (!java.util.Arrays.equals(c, old) || show != m_View.m_Show || timerChanged
++                    || showTimer != m_View.m_ShowTimer || mainTotal != m_View.m_MainTotal
++                    || profileTotal != m_View.m_ProfileTotal) {
+                 m_Counts = c;
+                 final boolean s = show;
+                 m_Main.post(() -> {
+                     m_View.m_Show = s;
++                    m_View.m_ShowTimer = showTimer;
++                    m_View.m_MainTotal = mainTotal;
++                    m_View.m_ProfileTotal = profileTotal;
+                     m_View.invalidate();
+                 });
+             }
+@@ -121,6 +141,72 @@ final class Hud {
+         }
+     }
+ 
++    /** Snapshot publicado só pela thread nativa; nenhuma escrita Java nas estatísticas. */
++    private TimerSnapshot readTimer() {
++        try {
++            if (m_Base < 0 || !readable(m_Base + TIMER, 64))
++                return null;
++            long address = m_Base + TIMER;
++            long sequence = u32(address + 4);
++            if ((sequence & 1) != 0)
++                return m_Timer;
++            // Full fences pair with native DMB around the sequence publication.
++            m_TimerFence.incrementAndGet();
++            byte[] bytes = new byte[64];
++            s_PeekBytes.invoke(null, address, bytes, 0, bytes.length);
++            m_TimerFence.incrementAndGet();
++            java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN);
++            if (b.getInt(0) != TIMER_MAGIC || (b.getInt(4) & 0xffffffffL) != sequence
++                    || sequence != u32(address + 4))
++                return m_Timer;
++            int status = b.getInt(36);
++            if (status != m_LastSaveStatus) {
++                m_LastSaveStatus = status;
++                if (status != 0)
++                    Log.w(TAG, "tempo: save nativo falhou, código " + status);
++            }
++            long elapsed = (b.getInt(12) & 0xffffffffL) | ((b.getInt(16) & 0xffffffffL) << 32);
++            long total = (b.getInt(20) & 0x7fffffffL) * 1000L + (b.getInt(24) & 0xffffffffL);
++            return new TimerSnapshot(b.getInt(8) == 1, b.getInt(32) == 1,
++                    formatTime(Math.max(0, elapsed), false), formatTime(total, true), status);
++        } catch (Exception e) {
++            if (!m_WarnedTimer) {
++                m_WarnedTimer = true;
++                Log.w(TAG, "leitura do timer", e);
++            }
++            return null;
++        }
++    }
++
++    private boolean m_WarnedTimer;
++
++    static String formatTime(long millis, boolean hoursAlways) {
++        long seconds = millis / 1000;
++        if (hoursAlways || seconds >= 3600)
++            return String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", seconds / 3600,
++                    seconds / 60 % 60, seconds % 60);
++        return String.format(java.util.Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
++    }
++
++    private static final class TimerSnapshot {
++        final boolean active, profile;
++        final String elapsed, total;
++        final int status;
++
++        TimerSnapshot(boolean active, boolean profile, String elapsed, String total, int status) {
++            this.active = active;
++            this.profile = profile;
++            this.elapsed = elapsed;
++            this.total = total;
++            this.status = status;
++        }
++
++        boolean sameDisplay(TimerSnapshot other) {
++            return other != null && active == other.active && profile == other.profile
++                    && status == other.status && elapsed.equals(other.elapsed) && total.equals(other.total);
++        }
++    }
++
+     private boolean m_Warned;
+ 
+     private void forgetPlayer() {
+@@ -207,7 +293,8 @@ final class Hud {
+         private final Bitmap[] m_Icons = new Bitmap[3];
+         private final Bitmap[] m_Digits = new Bitmap[10];   // fonte do HUD do jogo (bo_hud30pt_p), com contorno
+         private final Paint m_Bmp = new Paint(Paint.FILTER_BITMAP_FLAG);
+-        boolean m_Show;
++        private final Paint m_Text = new Paint(Paint.ANTI_ALIAS_FLAG);
++        boolean m_Show, m_ShowTimer, m_MainTotal, m_ProfileTotal;
+ 
+         HudView(Context ctx) {
+             super(ctx);
+@@ -230,9 +317,21 @@ final class Hud {
+             }
+         }
+ 
++        private void drawTime(Canvas c, String value, float right, float baseline, float size) {
++            m_Text.setTypeface(android.graphics.Typeface.MONOSPACE);
++            m_Text.setTextSize(size);
++            m_Text.setTextAlign(Paint.Align.RIGHT);
++            float width = m_Text.measureText(value);
++            m_Text.setColor(0xbb111111);
++            c.drawRoundRect(new RectF(right - width - 12, baseline - size - 6,
++                    right + 12, baseline + 8), 6, 6, m_Text);
++            m_Text.setColor(0xfff2eee4);
++            c.drawText(value, right, baseline, m_Text);
++        }
++
+         @Override
+         protected void onDraw(Canvas c) {
+-            if (!m_Show)
++            if (!m_Show && !m_ShowTimer && !m_MainTotal && !m_ProfileTotal)
+                 return;
+             // Mantém o HUD inteiro dentro da área de referência, inclusive fora de 16:9.
+             float s = Math.min(getWidth() / 1280f, getHeight() / 720f);
+@@ -242,7 +341,7 @@ final class Hud {
+             c.translate((getWidth() - 1280f * s) / 2f, (getHeight() - 720f * s) / 2f);
+             int[] counts = m_Counts;
+             float y = HUD_Y;
+-            for (int i = 0; i < 3; i++) {
++            for (int i = 0; m_Show && i < 3; i++) {
+                 if (counts[i] < 0)
+                     continue;
+                 Bitmap b = m_Icons[i];
+@@ -262,6 +361,20 @@ final class Hud {
+                 }
+                 y += ROW;
+             }
++            TimerSnapshot timer = m_Timer;
++            if (timer != null) {
++                int textSave = c.save();
++                c.scale(s, s);
++                if (m_ShowTimer)
++                    drawTime(c, timer.elapsed, TIMER_X, TIMER_Y, 30);
++                if (m_MainTotal)
++                    drawTime(c, "TEMPO TOTAL  " + timer.total, 858, 430, 18);
++                if (m_ProfileTotal)
++                    drawTime(c, "TEMPO TOTAL  " + timer.total, 1232, 56, 24);
++                if ((m_MainTotal || m_ProfileTotal) && timer.status != 0)
++                    drawTime(c, "Tempo ainda não salvo", 1232, 86, 18);
++                c.restoreToCount(textSave);
++            }
+             c.restoreToCount(save);
+         }
+     }
+diff --git a/build/patch_s3e.py b/build/patch_s3e.py
+index ccca33b..a67882d 100644
+--- a/build/patch_s3e.py
++++ b/build/patch_s3e.py
+@@ -72,6 +72,113 @@ CAVE2_CODE = bytes.fromhex(
+     "4ff60461cff6ff7179440868002200b1c26d10924a681192bde8074005a841467047042d0ed10c9961b1204642f6f9f9"
+     "40b14ff6d251cff6ff71794408600d9a4a608c60013547f676b9")
+ 
++# BEGIN GENERATED FPS (assemble_fps.py + fps.s)
++FPS_CODE = [
++    # FPS deadline/yield trampoline
++    (0x410600, bytes(78), bytes.fromhex(
++        "1fb50ff27c04002025f4cce925f4a0ebe2688ab122686368821a71eb03030bd353b9a368022b0cbf222321239a4203d2"
++        "981a25f4b8e9e9e720606160a268521c032a28bf0022a2600122e2601fbd"
++    )),
++    # FPS timestamps/phase (reserved)
++    (0x410680, bytes(16), bytes.fromhex(
++        "00000000000000000000000000000000"
++    )),
++    # FPS free-step yield hook
++    (0xfbc36, bytes.fromhex("002039f7b4ee"), bytes.fromhex(
++        "14f3e3fc00bf"
++    )),
++]
++# END GENERATED FPS
++
++# BEGIN GENERATED TIMER (assemble_timer.py + timer.s)
++TIMER_CODE = [
++    # timer code
++    (0x410000, bytes(1152), bytes.fromhex(
++        "014878440068704706610800034878440068002818bfd0f8f4007047c658080010b582b00446fff7ebff014623460022"
++        "684621f6b6fd009802b010bd70b50ff2c064fff7ddff98b146f2ee30caf6a830fff7e6ff456942f23f00c8f6e140fff7"
++        "dfff46696561a661fff7d0ffe06170bd00206061a06170bd10b50ff28464a06801280cd0fff7daff25f462eea062e162"
++        "0020e0602061606220620120a06010bd10b50ff25c64a068012808d125f450eea26ae36a801a994101d3e060216110bd"
++        "00224023400049415241b2f57a7f03d3a2f2e83240f001005b1ef3d170472de9f0410ff21c64a06801283dd1fff7d8ff"
++        "0020a060a062e062fff782ffb0b38046fff784ffe169884233d146f2ee30caf6a830fff785ff054642f23f00c8f6e140"
++        "fff77eff06467269b2f57a7f28bf0022e0682169801841f10001fff7c1ff4ff6ff77c7f6ff77002904d16b69c01801d2"
++        "b84200d93846686172616061a2614046002119f639ff6062bde8f08105206062fae706206062f7e710b5fff7b0ff0ff2"
++        "80540020a060e06020612062a062e06210bd70b504460ff268550ff22001acf5b3fe064620460ff22301acf5adfe3043"
++        "18bf01202862fff741ff70bd706c617965725f70726f66696c650070726f66696c655f73746174730000bf002de90f50"
++        "0ff21c5cdcf804305b1cccf80430bff35b8ffff7c1ffbff35b8f0ff2045cdcf804305b1cccf80430bde80f50b6f572bd"
++        "2de90f500ff2e84cdcf804305b1cccf80430bff35b8ffff727ffbff35b8f0ff2d04cdcf804305b1cccf80430bde80f50"
++        "c5f54eb82de90f500ff2b44cdcf804305b1cccf80430bff35b8ffff721ffbff35b8f0ff29c4cdcf804305b1cccf80430"
++        "bde80f50b7f53ebd2de90f500ff2804cdcf804305b1cccf80430bff35b8ffff726ffbff35b8f0ff2684cdcf804305b1c"
++        "ccf80430bde80f50c8f5f4bb2de90f500ff24c4cdcf804305b1cccf80430bff35b8ffff70cffbff35b8f0ff2344cdcf8"
++        "04305b1cccf80430bde80f50b6f580ba2de90f500ff2184cdcf804305b1cccf80430bff35b8ffff73fffbff35b8f0ff2"
++        "004cdcf804305b1cccf80430bde80f5062f5f4bb2de90f500ff2e43cdcf804305b1cccf80430bff35b8ffff7a5febff3"
++        "5b8f0ff2cc3cdcf804305b1cccf80430bde80f506cf592b92de90f500ff2b03cdcf804305b1cccf80430bff35b8ffff7"
++        "9ffebff35b8f0ff2983cdcf804305b1cccf80430bde80f5062f514b92de90f500ff27c3cdcf804305b1cccf80430bff3"
++        "5b8ffff7a4febff35b8f0ff2643cdcf804305b1cccf80430bde80f506cf54eba2de90f500ff2483cdcf804305b1cccf8"
++        "0430bff35b8ffff78afebff35b8f0ff2303cdcf804305b1cccf80430bde80f5061f5fcbf2de90f500ff2143cdcf80430"
++        "5b1cccf80430bff35b8ffff7cafebff35b8f0ff2fc2cdcf804305b1cccf80430bde80f50adf5d2b82de90f500ff2e02c"
++        "dcf804305b1cccf80430bff35b8ffff7a3febff35b8f0ff2c82cdcf804305b1cccf80430bde80f50cff5ceb92de90f50"
++        "0ff2ac2cdcf804305b1cccf80430bff35b8ffff789febff35b8f0ff2942cdcf804305b1cccf80430bde80f5073f5acbf"
++    )),
++    # timer state v1
++    (0x410700, bytes(64), bytes.fromhex(
++        "314d49540000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
++        "00000000000000000000000000000000"
++    )),
++    # classic_enter
++    (0x42f714, bytes.fromhex("651c194a"), bytes.fromhex(
++        "4db13d4a"
++    )),
++    # classic_play
++    (0x431180, bytes.fromhex("51021a4a"), bytes.fromhex(
++        "81b13d4a"
++    )),
++    # classic_tick
++    (0x42f71c, bytes.fromhex("652c194a"), bytes.fromhex(
++        "b5b13d4a"
++    )),
++    # classic_results
++    (0x431548, bytes.fromhex("053a1a4a"), bytes.fromhex(
++        "e9b13d4a"
++    )),
++    # classic_exit
++    (0x42f718, bytes.fromhex("5117194a"), bytes.fromhex(
++        "1db23d4a"
++    )),
++    # deadops_enter
++    (0x42754c, bytes.fromhex("6dda134a"), bytes.fromhex(
++        "51b23d4a"
++    )),
++    # deadops_play
++    (0x4285c8, bytes.fromhex("dd75144a"), bytes.fromhex(
++        "85b23d4a"
++    )),
++    # deadops_tick
++    (0x427554, bytes.fromhex("15d5134a"), bytes.fromhex(
++        "b9b23d4a"
++    )),
++    # deadops_results
++    (0x428708, bytes.fromhex("bd77144a"), bytes.fromhex(
++        "edb23d4a"
++    )),
++    # deadops_exit
++    (0x427550, bytes.fromhex("4dd3134a"), bytes.fromhex(
++        "21b33d4a"
++    )),
++    # profile_screen
++    (0x42ec90, bytes.fromhex("2d85184a"), bytes.fromhex(
++        "55b33d4a"
++    )),
++    # classic_restart
++    (0x1e0430, bytes.fromhex("fff7daf9"), bytes.fromhex(
++        "2ff2f2ff"
++    )),
++    # deadops_restart
++    (0x17b4ce, bytes.fromhex("08f083ff"), bytes.fromhex(
++        "94f2bdff"
++    )),
++]
++# END GENERATED TIMER
++
+ # patches de código (offset na imagem, bytes originais, bytes novos)
+ CODE = [
+     # tratador de eventos de jogo: morte -> SetState(11 = tela "Quick Revive / slide to spend")
+@@ -206,6 +313,12 @@ CODE = [
+     (0x2540B8, bytes.fromhex("d4f8f031"), bytes.fromhex("bcf109bc")),   # ldr.w r3,[r4,#0x1f0] -> b.w maxammo
+ ]
+ 
++# Recursos independentes; desative um com FPS30=0 ou MATCH_TIMER=0 no build.
++if os.environ.get("FPS30", "1") != "0":
++    CODE.extend(FPS_CODE)
++if os.environ.get("MATCH_TIMER", "1") != "0":
++    CODE.extend(TIMER_CODE)
++
+ # posição do contador de FPS, em pixels da tela (1280x720); "FPS 50" na escala 2 ocupa 96x16
+ FPS_X, FPS_Y = 592, 698   # rodapé central: no topo encostava no "2x" dos power-ups
+ def movw(rd, imm):

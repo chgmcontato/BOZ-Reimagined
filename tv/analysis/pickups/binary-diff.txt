@@ -1,0 +1,82 @@
+init: +2bc original, latch=0: 0x410c00
+  BEFORE 000000000000000000000000
+  AFTER  84f8bc5284f8bd52faf5ebbe
+  00410c00 strb.w r5, [r4, #0x2bc]
+  00410c04 strb.w r5, [r4, #0x2bd]
+  00410c08 b.w #0x20b9e2
+constructor latch reset: 0x20b9de
+  BEFORE 84f8bc52
+  AFTER  05f20fb9
+  0020b9de b.w #0x410c00
+vf24: preserve +2bc, latch if active: 0x410c20
+  BEFORE 00000000000000000000000000000000000000000000
+  AFTER  84f8bc0202b4002802d0012184f8bd1202bc00f675ba
+  00410c20 strb.w r0, [r4, #0x2bc]
+  00410c24 push {r1}
+  00410c26 cmp r0, #0
+  00410c28 beq #0x410c30
+  00410c2a movs r1, #1
+  00410c2c strb.w r1, [r4, #0x2bd]
+  00410c30 pop {r1}
+  00410c32 b.w #0x211120
+vf24 latch: 0x21111c
+  BEFORE 84f8bc02
+  AFTER  fff180bd
+  0021111c b.w #0x410c20
+acquisition: mark latch on perk 5 from any grant: 0x410c50
+  BEFORE 0000000000000000000000000000000000000000000000000000000000000000
+  AFTER  f8b50fb4052907d1c068f7f57ffe002802d0012180f8bd120fbc0125f0f552ba
+  00410c50 push {r3, r4, r5, r6, r7, lr}
+  00410c52 push {r0, r1, r2, r3}
+  00410c54 cmp r1, #5
+  00410c56 bne #0x410c68
+  00410c58 ldr r0, [r0, #0xc]
+  00410c5a bl #0x20895c
+  00410c5e cmp r0, #0
+  00410c60 beq #0x410c68
+  00410c62 movs r1, #1
+  00410c64 strb.w r1, [r0, #0x2bd]
+  00410c68 pop {r0, r1, r2, r3}
+  00410c6a movs r5, #1
+  00410c6c b.w #0x201114
+perk grant latch: 0x201110
+  BEFORE f8b50125
+  AFTER  0ff29ebd
+  00201110 b.w #0x410c50
+ApplyEffect entry: gate only type 6, before all side effects: 0x410ca0
+  BEFORE 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  AFTER  2de90f50062a14d10ea30f4818440068002814d090f83d32002b10d0084600280dd0f7f54bfe002809d090f8bd32002b05d0bde80f502de9f041f7f527b8bde80f50704700000000ec4b0800
+  00410ca0 push.w {r0, r1, r2, r3, ip, lr}
+  00410ca4 cmp r2, #6
+  00410ca6 bne #0x410cd2
+  00410ca8 adr r3, #0x38
+  00410caa ldr r0, [pc, #0x3c]
+  00410cac add r0, r3
+  00410cae ldr r0, [r0]
+  00410cb0 cmp r0, #0
+  00410cb2 beq #0x410cde
+  00410cb4 ldrb.w r3, [r0, #0x23d]
+  00410cb8 cmp r3, #0
+  00410cba beq #0x410cde
+  00410cbc mov r0, r1
+  00410cbe cmp r0, #0
+  00410cc0 beq #0x410cde
+  00410cc2 bl #0x20895c
+  00410cc6 cmp r0, #0
+  00410cc8 beq #0x410cde
+  00410cca ldrb.w r3, [r0, #0x2bd]
+  00410cce cmp r3, #0
+  00410cd0 beq #0x410cde
+  00410cd2 pop.w {r0, r1, r2, r3, ip, lr}
+  00410cd6 push.w {r4, r5, r6, r7, r8, lr}
+  00410cda b.w #0x207d2c
+  00410cde pop.w {r0, r1, r2, r3, ip, lr}
+  00410ce2 bx lr
+  00410ce4 movs r0, r0
+  00410ce6 movs r0, r0
+  00410ce8 ldr r3, [pc, #0x3b0]
+  00410cea movs r0, r1
+Death Machine recipient gate: 0x207d28
+  BEFORE 2de9f041
+  AFTER  08f2babf
+  00207d28 b.w #0x410ca0
