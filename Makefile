@@ -36,6 +36,7 @@ SRC := \
   src/memory.c \
   src/menus.c \
   src/overlay.c \
+  src/pvrtc.c \
   src/reimagined.c \
   src/runtime.c \
   src/screens.c \

@@ -29,7 +29,7 @@ static void usage(const char *argv0) {
             "usage: %s [--data DIR] [--play] [--verbose]\n"
             "  --data DIR   launcher folder (default: game/ next to the executable)\n"
             "  --play       skip the launcher and start the last mode played\n"
-            "  --install APK  install a mode from an APK and exit\n"
+            "  --install PKG  install a mode from an APK or an iOS IPA and exit\n"
             "  --obb FILE     remember the OBB archive and exit\n",
             argv0);
 }
@@ -195,10 +195,12 @@ int main(int argc, char **argv) {
         if (install) {
             enum game_mode installed;
             char error[256];
-            ok = install_apk(install, g_data_root, &installed, error, sizeof(error));
-            printf("%s\n", ok ? (installed == MODE_REIMAGINED ? "reimagined installed"
-                                                              : "original installed")
-                              : error);
+            ok = install_package(install, g_data_root, &installed, error, sizeof(error));
+            if (ok) {
+                printf("%s installed\n", mode_dir_name(installed));
+            } else {
+                printf("%s\n", error);
+            }
             if (ok) {
                 launcher_remember(installed, NULL);
             }
@@ -236,7 +238,10 @@ int main(int argc, char **argv) {
     if (!play || !launcher_saved_choice(&mode, g_obb_path, sizeof(g_obb_path))) {
         mode = launcher_run(g_obb_path, sizeof(g_obb_path));
     }
-    const char *mode_dir = mode == MODE_REIMAGINED ? "reimagined" : "original";
+    const char *mode_dir = mode_dir_name(mode);
+    if (mode == MODE_IOS) {
+        g_obb_path[0] = 0; /* the iOS data archive sits in its own assets folder */
+    }
     snprintf(g_root, sizeof(g_root), "%s/%s", g_data_root, mode_dir);
     snprintf(g_user_dir, sizeof(g_user_dir), "%s/user", g_root);
     make_dir(g_user_dir);

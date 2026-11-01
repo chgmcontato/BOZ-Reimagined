@@ -33,6 +33,8 @@ extern char g_data_root[1024]; /* launcher folder: settings, bindings, both mode
 extern char g_root[1024];      /* the running mode's folder (holds assets/) */
 extern char g_user_dir[1024];  /* the running mode's saves */
 extern char g_obb_path[1024];
+/* Game data is the gles1 build (the iOS archive): its art is PVRTC, decoded in software. */
+extern bool g_pvrtc_textures;
 
 struct host_options {
     int width;

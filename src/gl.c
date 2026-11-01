@@ -7,6 +7,7 @@
 #include "host.h"
 #include "overlay.h"
 #include "gl_state.h"
+#include "pvrtc.h"
 
 #include <SDL.h>
 #include <stdlib.h>
@@ -613,11 +614,13 @@ IMPORT(glGetString) {
     case GL_EXTENSIONS_ENUM:
         slot = 4;
         snprintf(buffer, sizeof(buffer),
+                 "%s"
                  "GL_OES_compressed_ETC1_RGB8_texture GL_OES_framebuffer_object "
                  "GL_OES_depth24 GL_OES_packed_depth_stencil GL_OES_rgb8_rgba8 "
                  "GL_OES_texture_npot GL_OES_element_index_uint GL_OES_blend_subtract "
                  "GL_OES_stencil8 GL_OES_vertex_half_float GL_EXT_texture_format_BGRA8888 "
-                 "GL_IMG_texture_npot GL_OES_mapbuffer_disabled");
+                 "GL_IMG_texture_npot GL_OES_mapbuffer_disabled",
+                 g_pvrtc_textures ? "GL_IMG_texture_compression_pvrtc " : "");
         break;
     default:
         ret(0);
@@ -634,10 +637,13 @@ IMPORT(glGetIntegerv) {
     int32_t *out = G2H(arg(1));
     switch (arg(0)) {
     case GL_NUM_COMPRESSED_TEXTURE_FORMATS_ENUM:
-        out[0] = 1;
+        out[0] = g_pvrtc_textures ? 5 : 1;
         return;
     case GL_COMPRESSED_TEXTURE_FORMATS_ENUM:
         out[0] = GL_ETC1_RGB8_OES_ENUM;
+        if (g_pvrtc_textures) {
+            for (int i = 0; i < 4; ++i) out[1 + i] = PVRTC_RGB_4BPP + i;
+        }
         return;
     case GL_IMPLEMENTATION_COLOR_READ_TYPE_ENUM:
         out[0] = 0x1401; /* GL_UNSIGNED_BYTE */
@@ -664,22 +670,93 @@ IMPORT(glBindFramebuffer) {
 }
 
 static uint32_t remap_compressed(uint32_t format) {
+    static uint32_t seen[8];
+    for (int i = 0; i < 8; ++i) {
+        if (seen[i] == format) break;
+        if (!seen[i]) {
+            seen[i] = format;
+            log_info("compressed texture format 0x%04x%s", format,
+                     format == GL_ETC1_RGB8_OES_ENUM ? " (ETC1 -> ETC2)" : "");
+            break;
+        }
+    }
     return format == GL_ETC1_RGB8_OES_ENUM ? GL_COMPRESSED_RGB8_ETC2_ENUM : format;
+}
+
+/* GLES lets internalformat be GL_BGRA_EXT (EXT/APPLE_texture_format_BGRA8888, used by the iOS
+ * build); desktop GL rejects it, so the texture would stay empty. Store it as RGBA8 instead and
+ * keep the BGRA client data, which desktop GL converts on upload. */
+IMPORT(glTexImage2D) {
+    GLFN(void, glTexImage2D, uint32_t, int32_t, int32_t, int32_t, int32_t, int32_t, uint32_t, uint32_t,
+         const void *);
+    int32_t internal = (int32_t)arg(2);
+    uint32_t format = arg(6), type = arg(7);
+    static uint32_t seen[16];
+    uint32_t key = ((uint32_t)internal & 0xffffu) << 16 ^ (format & 0xffffu) ^ (type << 4);
+    for (int i = 0; i < 16; ++i) {
+        if (seen[i] == key) break;
+        if (!seen[i]) {
+            seen[i] = key;
+            log_debug("glTexImage2D internal 0x%04x format 0x%04x type 0x%04x", (unsigned)internal,
+                      format, type);
+            break;
+        }
+    }
+    if (internal == 0x80e1 /* GL_BGRA_EXT */) {
+        internal = 0x8058; /* GL_RGBA8 */
+    }
+    glTexImage2D(arg(0), (int32_t)arg(1), internal, (int32_t)arg(3), (int32_t)arg(4), (int32_t)arg(5),
+                 format, type, G2H(arg(8)));
+}
+
+/* PVRTC (iOS data): decode to RGBA8; desktop GL has no PVRTC. */
+static bool upload_pvrtc(bool sub, uint32_t target, int32_t level, int32_t x, int32_t y, int32_t w,
+                         int32_t h, uint32_t format, int32_t size, const void *data) {
+    if (!pvrtc_is_format(format)) {
+        return false;
+    }
+    int bpp2 = format == PVRTC_RGB_2BPP || format == PVRTC_RGBA_2BPP;
+    uint8_t *rgba = malloc((size_t)w * (size_t)h * 4u + 4u);
+    if (!rgba || !pvrtc_decode(data, (size_t)size, w, h, bpp2, rgba)) {
+        log_error("PVRTC %dx%d (format 0x%04x, %d bytes) could not be decoded", w, h, format, size);
+        free(rgba);
+        return true; /* nothing sensible to upload */
+    }
+    if (sub) {
+        GLFN(void, glTexSubImage2D, uint32_t, int32_t, int32_t, int32_t, int32_t, int32_t, uint32_t,
+             uint32_t, const void *);
+        glTexSubImage2D(target, level, x, y, w, h, 0x1908, 0x1401, rgba);
+    } else {
+        GLFN(void, glTexImage2D, uint32_t, int32_t, int32_t, int32_t, int32_t, int32_t, uint32_t,
+             uint32_t, const void *);
+        glTexImage2D(target, level, 0x8058 /* GL_RGBA8 */, w, h, 0, 0x1908, 0x1401, rgba);
+    }
+    free(rgba);
+    return true;
 }
 
 IMPORT(glCompressedTexImage2D) {
     GLFN(void, glCompressedTexImage2D, uint32_t, int32_t, uint32_t, int32_t, int32_t, int32_t,
          int32_t, const void *);
-    glCompressedTexImage2D(arg(0), (int32_t)arg(1), remap_compressed(arg(2)), (int32_t)arg(3),
-                           (int32_t)arg(4), (int32_t)arg(5), (int32_t)arg(6), G2H(arg(7)));
+    uint32_t format = remap_compressed(arg(2));
+    if (upload_pvrtc(false, arg(0), (int32_t)arg(1), 0, 0, (int32_t)arg(3), (int32_t)arg(4), format,
+                     (int32_t)arg(6), G2H(arg(7)))) {
+        return;
+    }
+    glCompressedTexImage2D(arg(0), (int32_t)arg(1), format, (int32_t)arg(3), (int32_t)arg(4),
+                           (int32_t)arg(5), (int32_t)arg(6), G2H(arg(7)));
 }
 
 IMPORT(glCompressedTexSubImage2D) {
     GLFN(void, glCompressedTexSubImage2D, uint32_t, int32_t, int32_t, int32_t, int32_t, int32_t,
          uint32_t, int32_t, const void *);
+    uint32_t format = remap_compressed(arg(6));
+    if (upload_pvrtc(true, arg(0), (int32_t)arg(1), (int32_t)arg(2), (int32_t)arg(3), (int32_t)arg(4),
+                     (int32_t)arg(5), format, (int32_t)arg(7), G2H(arg(8)))) {
+        return;
+    }
     glCompressedTexSubImage2D(arg(0), (int32_t)arg(1), (int32_t)arg(2), (int32_t)arg(3),
-                              (int32_t)arg(4), (int32_t)arg(5), remap_compressed(arg(6)),
-                              (int32_t)arg(7), G2H(arg(8)));
+                              (int32_t)arg(4), (int32_t)arg(5), format, (int32_t)arg(7), G2H(arg(8)));
 }
 
 IMPORT(glShaderSource) {
@@ -988,7 +1065,7 @@ IMPORT(glTexParameterxv) {
 void register_gl_thunks(void);
 
 static const char *const k_special[] = {
-    "glGetString", "glGetIntegerv", "glBindFramebuffer", "glCompressedTexImage2D", "glCompressedTexSubImage2D",
+    "glGetString", "glGetIntegerv", "glBindFramebuffer", "glTexImage2D", "glCompressedTexImage2D", "glCompressedTexSubImage2D",
     "glShaderSource", "glCompileShader", "glTransformFeedbackVaryings", "glOrthof", "glOrthox", "glFrustumf",
     "glClipPlanef", "glClipPlanex", "glClearColorx", "glClearDepthx", "glDepthRangex",
     "glAlphaFuncx", "glColor4x", "glNormal3x", "glMultiTexCoord4x", "glTranslatex", "glScalex",
@@ -1012,6 +1089,7 @@ void register_gl_imports(void) {
     REG(glGetString);
     REG(glGetIntegerv);
     REG(glBindFramebuffer);
+    REG(glTexImage2D);
     REG(glCompressedTexImage2D);
     REG(glCompressedTexSubImage2D);
     REG(glShaderSource);
