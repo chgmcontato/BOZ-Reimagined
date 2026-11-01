@@ -4,10 +4,14 @@ final class CoopPauseState {
     private long session;
     private int peak;
     private boolean waiting;
+    private int peers;
+    int peers() {return peers;}
+    int peak() {return peak;}
     boolean update(boolean active,long id,int peers) {
-        if(!active) {session=0;peak=0;waiting=false;return false;}
+        if(!active) {session=0;peak=0;peers=0;waiting=false;return false;}
         if(id==0 || peers<0 || peers>16) return waiting;
         if(session!=id) {session=id;peak=0;waiting=false;}
+        this.peers=peers;
         peak=Math.max(peak,peers);
         waiting=peak>0 && peers<peak;
         return waiting;

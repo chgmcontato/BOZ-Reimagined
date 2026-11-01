@@ -421,6 +421,9 @@ final class Hud {
     }
 
     static volatile boolean s_WaitingPlayer;
+    /** Jogadores presentes / esperados e início da espera, para o cartão de partida pausada. */
+    static volatile int s_WaitPresent = 1, s_WaitExpected = 2;
+    static volatile long s_WaitSince;
     private final CoopPauseState m_CoopPause = new CoopPauseState();
     private long m_OwnedPause;
     private long nativeIngameState() throws Exception {
@@ -450,7 +453,10 @@ final class Hud {
                     s_PokeByte.invoke(null,state+0x50,(byte)0);
                 m_OwnedPause=0;
             }
+            s_WaitPresent=m_CoopPause.peers()+1;
+            s_WaitExpected=Math.max(m_CoopPause.peak()+1,s_WaitPresent+1);
             if(waiting!=s_WaitingPlayer) {
+                if(waiting)s_WaitSince=android.os.SystemClock.uptimeMillis();
                 s_WaitingPlayer=waiting;
                 Log.i(TAG,"Co-op: "+(waiting?"partida congelada, aguardando jogador":"jogadores presentes, partida liberada"));
                 m_Main.post(m_View::invalidate);
@@ -754,6 +760,62 @@ final class Hud {
             c.restoreToCount(save);
         }
 
+        private final Paint m_Card = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Path m_CardPath = new android.graphics.Path();
+
+        private void quad(Canvas c, float[] p, int color, boolean stroke, float width) {
+            m_CardPath.reset();
+            m_CardPath.moveTo(p[0], p[1]);
+            m_CardPath.lineTo(p[2], p[3]);
+            m_CardPath.lineTo(p[4], p[5]);
+            m_CardPath.lineTo(p[6], p[7]);
+            m_CardPath.close();
+            m_Card.setShader(null);
+            m_Card.setShadowLayer(0, 0, 0, 0);
+            m_Card.setStyle(stroke ? Paint.Style.STROKE : Paint.Style.FILL);
+            m_Card.setStrokeWidth(width);
+            m_Card.setColor(color);
+            c.drawPath(m_CardPath, m_Card);
+        }
+
+        /** Cartão de partida pausada no co-op, igual ao do PC (src/reimagined.c draw_coop_pause). */
+        private void drawCoopPause(Canvas c) {
+            long now = android.os.SystemClock.uptimeMillis();
+            m_Card.setStyle(Paint.Style.FILL);
+            m_Card.setColor(0x99000000);
+            c.drawRect(0, 0, 1280, 720, m_Card);
+            float x = 330, y = 230, w = 620, h = 250;
+            float[] panel = {x, y + 8, x + w, y, x + w - 4, y + h - 6, x + 3, y + h};
+            quad(c, panel, 0xff151211, false, 0);
+            quad(c, panel, 0xff151211, true, 5);
+            quad(c, panel, 0xff827763, true, 1.5f);
+            quad(c, new float[]{x + 24, y + 30, x + w - 30, y + 22, x + w - 34, y + 84, x + 22, y + 90},
+                    0xff791d24, false, 0);
+            m_Card.setStyle(Paint.Style.FILL);
+            m_Card.setTypeface(m_Comic);
+            m_Card.setTextAlign(Paint.Align.CENTER);
+            m_Card.setColor(0xfff2eee4);
+            m_Card.setTextSize(40);
+            c.drawText("MATCH PAUSED", 640, y + 72, m_Card);
+            m_Card.setTextSize(24);
+            String waiting = "WAITING FOR A PLAYER TO RECONNECT";
+            float left = 640 - m_Card.measureText(waiting) / 2;
+            m_Card.setTextAlign(Paint.Align.LEFT);
+            c.drawText(waiting, left, y + 138, m_Card);
+            c.drawText("...".substring(0, (int) ((now / 400) % 4)), left + m_Card.measureText(waiting), y + 138, m_Card);
+            long waited = Math.max(0, (now - s_WaitSince) / 1000);
+            m_Card.setTextAlign(Paint.Align.CENTER);
+            m_Card.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            m_Card.setTextSize(22);
+            m_Card.setColor(0xfff5c518);
+            c.drawText(String.format(java.util.Locale.ROOT, "PLAYERS %d / %d     WAITING %d:%02d",
+                    s_WaitPresent, s_WaitExpected, waited / 60, waited % 60), 640, y + 182, m_Card);
+            m_Card.setTypeface(android.graphics.Typeface.DEFAULT);
+            m_Card.setTextSize(18);
+            m_Card.setColor(0xffbcb8ad);
+            c.drawText("The match resumes on its own when everyone is back.", 640, y + 220, m_Card);
+        }
+
         @Override
         protected void onDraw(Canvas c) {
             boolean waitBanner=s_WaitingPlayer && m_Cursor.screenNow()==null;
@@ -792,12 +854,11 @@ final class Hud {
                 y += ROW;
             }
             if (waitBanner) {
-                int waitSave=c.save();c.scale(s,s);
-                Paint waitPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
-                waitPaint.setColor(0xE6101010);c.drawRect(180,280,1100,410,waitPaint);
-                waitPaint.setColor(0xFFFFFFFF);waitPaint.setTextSize(28);waitPaint.setTextAlign(Paint.Align.CENTER);
-                c.drawText("MATCH PAUSED — WAITING FOR PLAYER",640,350,waitPaint);
+                int waitSave = c.save();
+                c.scale(s, s);
+                drawCoopPause(c);
                 c.restoreToCount(waitSave);
+                postInvalidateDelayed(400);   // pontinhos e tempo de espera
             }
             TimerSnapshot timer = m_Timer;
             if (timer != null) {
