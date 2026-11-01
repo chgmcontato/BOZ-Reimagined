@@ -18,12 +18,15 @@
 #include <sys/mman.h>
 
 #include <array>
+#include <bitset>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 extern "C" {
 #include "emu.h"
@@ -49,7 +52,21 @@ struct Thunk {
     import_fn fn;
 };
 
-PageTable *g_pages;
+PageTable *g_pages;  // what the JIT sees (a null entry sends the access to the callbacks)
+PageTable *g_mapped; // every mapped guest page (identity), used by the callbacks
+
+// CODBOZ_DYN_CODE_WATCH=1: self-modifying code check. Pages the JIT has fetched code from leave
+// the JIT's table, so every data access to them goes through the callbacks; a write there
+// invalidates the translated code (what Unicorn always does) and is logged.
+bool g_code_watch;
+std::vector<std::uint8_t> g_code_page;
+std::unordered_map<uint32_t, std::bitset<1024>> g_code_words; // fetched words, per code page
+uint64_t g_code_writes, g_data_writes_in_code_pages;
+
+bool fetched_word(uint32_t va) {
+    auto it = g_code_words.find(va >> 12);
+    return it != g_code_words.end() && it->second.test((va & 0xfffu) >> 2);
+}
 Thunk g_thunks[MAX_THUNKS];
 uint32_t g_thunk_count;
 uint32_t *g_thunk_code;
@@ -65,7 +82,9 @@ int g_trace;
 uint32_t g_perf_by_thunk[8192];
 uint32_t g_arena_next = GUEST_ARENA_BASE;
 
-inline std::uint8_t *page(uint32_t va) { return (*g_pages)[va >> 12]; }
+inline std::uint8_t *page(uint32_t va) { return (*g_mapped)[va >> 12]; }
+
+void invalidate_all(uint32_t addr, size_t size);
 
 class Env;
 std::unique_ptr<Dynarmic::ExclusiveMonitor> g_monitor;
@@ -100,6 +119,17 @@ public:
     template <typename T> void write(uint32_t va, T v) {
         if (page(va) && page(va + sizeof(T) - 1)) {
             std::memcpy(G2H(va), &v, sizeof v);
+            if (g_code_watch && (g_code_page[va >> 12] || g_code_page[(va + sizeof(T) - 1) >> 12])) {
+                if (!fetched_word(va) && !fetched_word(va + sizeof(T) - 1)) {
+                    g_data_writes_in_code_pages++; // data sharing a page with code
+                    return;
+                }
+                if (g_code_writes++ < 20) {
+                    log_info("dynarmic: guest wrote %zu bytes into code at 0x%08x (pc=%08x, %s)",
+                             sizeof(T), va, jit->Regs()[15], g_current ? g_current : "guest code");
+                }
+                invalidate_all(va & ~3u, sizeof(T) + 4);
+            }
             return;
         }
         fault("write", va, sizeof(T));
@@ -112,6 +142,13 @@ public:
     }
 
     std::optional<std::uint32_t> MemoryReadCode(uint32_t va) override {
+        if (g_code_watch && page(va)) {
+            if (!g_code_page[va >> 12]) {
+                g_code_page[va >> 12] = 1;
+                (*g_pages)[va >> 12] = nullptr;
+            }
+            g_code_words[va >> 12].set((va & 0xfffu) >> 2);
+        }
         if (page(va)) {
             std::uint32_t w;
             std::memcpy(&w, G2H(va), 4);
@@ -315,13 +352,15 @@ Env &env_at(int level) {
             cfg.coprocessors[i] = g_coprocs[i];
         }
         cfg.absolute_offset_page_table = false; // host = page_table[va >> 12] + (va & 0xfff)
-        if (const char *fm = std::getenv("CODBOZ_DYN_FASTMEM"); fm && std::strcmp(fm, "1") == 0)
+        if (const char *fm = std::getenv("CODBOZ_DYN_FASTMEM");
+            fm && std::strcmp(fm, "1") == 0 && !g_code_watch)
             cfg.fastmem_pointer = 0;
         cfg.enable_cycle_counting = false; // run until halted
         cfg.code_cache_size = level == 0 ? 256u << 20 : 32u << 20;
         env->jit = std::make_unique<Dynarmic::A32::Jit>(cfg);
         if (level == 0) {
-            log_info("dynarmic: A32 JIT, %s", cfg.fastmem_pointer ? "fastmem (identity)" : "page table");
+            log_info("dynarmic: A32 JIT, %s%s", cfg.fastmem_pointer ? "fastmem (identity)" : "page table",
+                     g_code_watch ? ", self-modifying code check on" : "");
         }
         g_envs[level] = std::move(env);
     }
@@ -367,20 +406,32 @@ extern "C" bool emu_map_identity(uint32_t addr, uint32_t size) {
     }
     if (!g_pages) {
         g_pages = new PageTable{};
+        g_mapped = new PageTable{};
     }
     // Identity map: a page's entry is its own host address; null = unmapped.
     for (uint32_t off = 0; off < size; off += 0x1000u) {
         (*g_pages)[(addr + off) >> 12] = static_cast<std::uint8_t *>(p) + off;
+        (*g_mapped)[(addr + off) >> 12] = static_cast<std::uint8_t *>(p) + off;
     }
     // Code may already be cached for a range that is (re)mapped.
-    for (auto &env : g_envs) {
-        if (env) env->jit->InvalidateCacheRange(addr, size);
-    }
+    invalidate_all(addr, size);
     return true;
 }
 
+namespace {
+void invalidate_all(uint32_t addr, size_t size) {
+    for (auto &env : g_envs) {
+        if (env) env->jit->InvalidateCacheRange(addr, size);
+    }
+}
+} // namespace
+
 extern "C" bool emu_init(void) {
     g_trace = std::getenv("CODBOZ_TRACE") != nullptr;
+    if (const char *w = std::getenv("CODBOZ_DYN_CODE_WATCH"); w && std::strcmp(w, "1") == 0) {
+        g_code_watch = true;
+        g_code_page.assign(UserConfig::NUM_PAGE_TABLE_ENTRIES, 0);
+    }
     if (!emu_map_identity(GUEST_STACK_BASE, GUEST_STACK_SIZE) ||
         !emu_map_identity(GUEST_ARENA_BASE, GUEST_ARENA_SIZE) ||
         !emu_map_identity(GUEST_THUNK_BASE, GUEST_THUNK_SIZE) ||
@@ -400,6 +451,11 @@ extern "C" bool emu_init(void) {
 }
 
 extern "C" void emu_shutdown(void) {
+    if (g_code_watch) {
+        log_info("dynarmic: %llu guest writes into translated code, %llu data writes in code pages",
+                 static_cast<unsigned long long>(g_code_writes),
+                 static_cast<unsigned long long>(g_data_writes_in_code_pages));
+    }
     for (auto &env : g_envs) env.reset();
     g_monitor.reset();
 }
