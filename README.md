@@ -151,7 +151,7 @@ The patch only works on top of the original APK. Full guide, including co-op ove
 |---|---|---|---|
 | Install from | Android APK 1.0.11 | Reimagined TV APK | iOS IPA 1.3.5 |
 | `boz.s3e` | untouched | the TV's own, byte for byte | decoded from the IPA |
-| Co-op with | phones running the original | TVs and PCs running Reimagined | the same iOS version |
+| Co-op with | phones running the original | TVs and PCs running Reimagined | same iOS version; joins lobbies on phones with the 64-bit iOS port |
 | Waves / drops | mobile rules | BO1 horde pace, BO1 drop cycle, Death Machine/DG-2 rules | mobile rules |
 | HUD | mobile HUD without touch buttons | TV HUD: grenade counters, match timer, FPS counter | mobile HUD |
 
