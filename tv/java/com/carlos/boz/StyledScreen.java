@@ -256,7 +256,7 @@ final class StyledScreen {
         text(c, "REIMAGINED", 85, 119, 42, PAPER, 660, false);
     }
 
-    private static String mapName(String id) {
+    static String mapName(String id) {
         if (id == null || id.isEmpty()) return null;
         switch (id) {
             case "kino": return "KINO DER TOTEN";

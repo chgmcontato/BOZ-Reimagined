@@ -577,19 +577,19 @@ static void draw_controls(void) {
                                 : TR("Clique numa caixa para trocar. Cada ação aceita até 3 entradas.", "Click a box to change it. Each action takes up to 3 inputs."),
           x, 84, 13, g_capture_action >= 0 ? C_GOLD : C_DIM, UI_LEFT);
     for (int a = 0; a < BIND_COUNT; ++a) {
-        float y = 88 + (float)a * 24.0f; /* all actions + reset fit above the footer */
+        float y = 88 + (float)a * 22.5f; /* all actions + reset fit above the footer */
         label(bindings_label((enum bind_action)a), x, y + 16, 13, C_SAND, UI_LEFT);
         for (int s = 0; s < 3; ++s) {
             float bx = REF_W - 40 - (float)(3 - s) * 136;
             bool capturing = g_capture_action == a && g_capture_slot == s;
-            bool focused = focusable(bx, y, 130, 22);
-            bool hover = hovered(bx, y, 130, 22);
-            ui_round_rect(bx, y, 130, 22, 6, capturing ? C_ACCENT : hover ? C_RAISE_HI : C_RAISE);
+            bool focused = focusable(bx, y, 130, 21);
+            bool hover = hovered(bx, y, 130, 21);
+            ui_round_rect(bx, y, 130, 21, 6, capturing ? C_ACCENT : hover ? C_RAISE_HI : C_RAISE);
             char name[48];
             bindings_describe(bindings_get((enum bind_action)a, s), name, sizeof(name));
             label(capturing ? "..." : name, bx + 65, y + 16, 12,
                   bindings_get((enum bind_action)a, s)[0] ? C_SNOW : C_DIM, UI_CENTER);
-            if (g_capture_action < 0 && pressed(focused, bx, y, 130, 22)) {
+            if (g_capture_action < 0 && pressed(focused, bx, y, 130, 21)) {
                 g_capture_action = a;
                 g_capture_slot = s;
                 g_click = false;
@@ -597,7 +597,7 @@ static void draw_controls(void) {
             }
         }
     }
-    if (g_capture_action < 0 && button(x, 88 + BIND_COUNT * 24.0f + 4, 170, 28, TR("Restaurar padrão", "Reset to defaults"), false,
+    if (g_capture_action < 0 && button(x, 88 + BIND_COUNT * 22.5f + 4, 170, 28, TR("Restaurar padrão", "Reset to defaults"), false,
                                        true)) {
         bindings_reset();
         save_bindings();

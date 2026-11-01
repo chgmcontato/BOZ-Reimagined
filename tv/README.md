@@ -51,7 +51,7 @@ no touch HUD, the Black Ops 1 console button layout, and menus redesigned in the
 | Controls, menus, transitions, player name | ✅ tested on TV |
 | Pause (data, map, Dead Ops), timer, TIME PLAYED, Save & Quit → Continue | ✅ tested on TV |
 | Death Machine, DG-2, tacticals on LB and HUD | ✅ tested on TV |
-| **Local Wi-Fi** co-op (lobby, player name, map select) | 🟡 implemented, lobby navigable, **two-device match not tested yet** |
+| **Local Wi-Fi** co-op (lobby, player name, map select) | ✅ PC ↔ TV match played (TV ↔ TV not tested) |
 | Stuck zombie, sound fix, sticks after leaving pause | 🟡 implemented, needs confirmation on TV |
 | BO1 waves/drops, 30 FPS, tutorial, "[A] to …" prompts | 🟡 implemented, full test pending |
 | Play Online | ❌ official servers are offline |
@@ -85,7 +85,7 @@ You need the original APK and OBB (table above), a PC with `adb` and `xdelta3`, 
    APK, turning it into the Reimagined APK.
 3. Run:
    ```bash
-   bash instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.2.xdelta
+   bash instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.4.xdelta
    ```
    The script checks the hashes, applies the patch, installs the APK and copies the OBB to
    `/storage/emulated/0/Android/obb/com.activision.boz/`. The first time you connect, the TV may ask you to authorize the PC.

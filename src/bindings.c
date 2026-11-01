@@ -11,14 +11,14 @@ static int g_wheel_up, g_wheel_down;
 static const char *const k_ids[BIND_COUNT] = {
     "forward", "back",    "left",     "right",    "shoot",  "aim",    "reload", "use",
     "melee",   "grenade", "tactical", "claymore", "crouch", "switch", "pause",
-    "nuke",    "boost",
+    "nuke",    "boost",   "scoreboard",
 };
 
 static const char *const k_labels[BIND_COUNT] = {
     "Andar para frente", "Andar para trás", "Andar para a esquerda", "Andar para a direita",
     "Atirar", "Mirar (segurar)", "Recarregar", "Usar / comprar / correr", "Faca",
     "Granada", "Tático (Monkey Bomb)", "Claymore", "Agachar", "Trocar de arma", "Pausar",
-    "Nuke (Dead Ops Arcade)", "Boost (Dead Ops Arcade)",
+    "Nuke (Dead Ops Arcade)", "Boost (Dead Ops Arcade)", "Placar (Reimagined)",
 };
 
 /* Keyboard + mouse defaults, then the Black Ops 1 console layout. */
@@ -40,6 +40,7 @@ static const char *const k_defaults[BIND_COUNT][BIND_SLOTS] = {
     {"KEY:Escape", "PAD:start", NULL, NULL},
     {"KEY:X", "MOUSE:2", "PADAXIS:righttrigger", NULL},
     {"MOUSE:3", "KEY:Z", "PADAXIS:lefttrigger", NULL},
+    {"KEY:Tab", "PAD:back", NULL, NULL},
 };
 
 const char *bindings_id(enum bind_action a) {
@@ -50,6 +51,7 @@ static const char *const k_labels_en[BIND_COUNT] = {
     "Move forward", "Move back", "Move left", "Move right", "Shoot", "Aim (hold)", "Reload",
     "Use / buy / sprint", "Melee", "Grenade", "Tactical (Monkey Bomb)", "Claymore", "Crouch",
     "Switch weapon", "Pause", "Nuke (Dead Ops Arcade)", "Boost (Dead Ops Arcade)",
+    "Scoreboard (Reimagined)",
 };
 
 const char *bindings_label(enum bind_action a) {
@@ -219,6 +221,15 @@ static bool input_down(const char *in, bool km, SDL_GameController *pad) {
     if (pad && strncmp(in, "PADAXIS:", 8) == 0) {
         SDL_GameControllerAxis ax = SDL_GameControllerGetAxisFromString(in + 8);
         return ax != SDL_CONTROLLER_AXIS_INVALID && SDL_GameControllerGetAxis(pad, ax) > 12000;
+    }
+    return false;
+}
+
+bool bindings_uses(enum bind_action a, const char *input) {
+    for (int s = 0; s < BIND_SLOTS; ++s) {
+        if (strcasecmp(g_map[a][s], input) == 0) {
+            return true;
+        }
     }
     return false;
 }
