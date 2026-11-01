@@ -63,7 +63,22 @@ amostras de 1 s só com `active=1 state=gameplay`, emu ponderado por frame):
 | Dynarmic (page table) | off | 175.8 | 4.7 |
 | Dynarmic (fastmem) | off | 203.4 | 4.0 |
 
-Pendências: auto-modificação de código em runtime não é detectada (o Unicorn detecta); só os
-patches feitos antes do `emu_run` estão cobertos. Testar COTD e co-op; checar a única diferença
-vista (uma corrida com vsync terminou em game over antes do Esc, coerente com o jogo a 60 fps em
-vez de 28, mas não confirmado).
+Call of the Dead (rodada 1, mesma metodologia, sem vsync):
+
+| Backend | FPS médio | emu ms/frame |
+|---|---:|---:|
+| Unicorn 2.1.4 | 37.8 | 25.9 |
+| Dynarmic (page table) | 211.2 | 3.7 |
+| Dynarmic + `CODBOZ_DYN_CODE_WATCH=1` | 197.7 | 4.0 |
+
+Código auto-modificável: `CODBOZ_DYN_CODE_WATCH=1` tira da page table do JIT as páginas de onde ele
+buscou instruções; escritas nelas passam pelos callbacks e invalidam o código se atingirem uma
+palavra já traduzida. Em COTD (Reimagined), no modo Original e no modo iOS: **zero** escritas em
+código traduzido (as escritas em 0x4a3db6xx são dados que dividem a página com código). Ou seja,
+a limitação do Dynarmic frente ao Unicorn não afeta este jogo.
+
+Coprocessadores: CP0–CP15 (menos CP10/11, VFP) viram registradores simples; CDP/LDC/STC viram
+no-op registrado no log. Nenhum acesso aparece nos jogos testados; existem para não abortar.
+
+Pendências: co-op não testado com o Dynarmic; checar a única diferença vista (uma corrida com
+vsync terminou em game over antes do Esc, coerente com o jogo a 60 fps em vez de 28).
