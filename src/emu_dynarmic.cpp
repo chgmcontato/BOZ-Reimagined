@@ -12,6 +12,7 @@
 // level runs on its own Jit. The caller's Jit keeps its registers untouched while the callee runs.
 #include <dynarmic/interface/A32/a32.h>
 #include <dynarmic/interface/A32/config.h>
+#include <dynarmic/interface/A32/coprocessor.h>
 #include <dynarmic/interface/exclusive_monitor.h>
 
 #include <sys/mman.h>
@@ -22,6 +23,7 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <string>
 
 extern "C" {
 #include "emu.h"
@@ -207,6 +209,91 @@ public:
     std::uint64_t GetTicksRemaining() override { return 1u << 30; }
 };
 
+// CP14/CP15 as plain storage: each (opc1, CRn, CRm, opc2) is one word the guest can read and
+// write (TPIDRURW/TPIDRURO for TLS, cache/ID registers for runtime CPU checks). Unicorn models
+// the real registers; the game only needs them to read back what it wrote and plausible IDs.
+class SystemCoprocessor final : public Dynarmic::A32::Coprocessor {
+    using CoprocReg = Dynarmic::A32::CoprocReg;
+
+public:
+    explicit SystemCoprocessor(unsigned number) : m_number(number) {
+        if (number == 15) {
+            word(0, 0, 0, 0) = 0x412fc0f1u; // MIDR: Cortex-A15 r2p1 (Unicorn's model)
+            word(0, 0, 0, 1) = 0x8444c004u; // CTR
+            word(0, 1, 0, 2) = 0x00f00000u; // CPACR: cp10/cp11 full access (VFP/NEON on)
+        }
+    }
+
+    std::optional<Callback> CompileInternalOperation(bool two, unsigned opc1, CoprocReg d,
+                                                     CoprocReg n, CoprocReg m, unsigned opc2) override {
+        return ignored(two ? "cdp2" : "cdp", (opc1 << 12) | (static_cast<unsigned>(d) << 8) |
+                                              (static_cast<unsigned>(n) << 4) | static_cast<unsigned>(m),
+                       opc2);
+    }
+    CallbackOrAccessOneWord CompileSendOneWord(bool two, unsigned opc1, CoprocReg n, CoprocReg m,
+                                               unsigned opc2) override {
+        return &slot(opc1, n, m, opc2 + (two ? 8u : 0u), "write");
+    }
+    CallbackOrAccessTwoWords CompileSendTwoWords(bool two, unsigned opc, CoprocReg m) override {
+        return pair(opc + (two ? 8u : 0u), m, "write");
+    }
+    CallbackOrAccessOneWord CompileGetOneWord(bool two, unsigned opc1, CoprocReg n, CoprocReg m,
+                                              unsigned opc2) override {
+        return &slot(opc1, n, m, opc2 + (two ? 8u : 0u), "read");
+    }
+    CallbackOrAccessTwoWords CompileGetTwoWords(bool two, unsigned opc, CoprocReg m) override {
+        return pair(opc + (two ? 8u : 0u), m, "read");
+    }
+    std::optional<Callback> CompileLoadWords(bool two, bool l, CoprocReg d,
+                                             std::optional<std::uint8_t>) override {
+        return ignored(two ? "ldc2" : "ldc", static_cast<unsigned>(d), l);
+    }
+    std::optional<Callback> CompileStoreWords(bool two, bool l, CoprocReg d,
+                                              std::optional<std::uint8_t>) override {
+        return ignored(two ? "stc2" : "stc", static_cast<unsigned>(d), l);
+    }
+
+private:
+    unsigned m_number;
+    // Stable addresses: the JIT bakes these pointers into compiled code.
+    static constexpr size_t SLOTS = 16 * 16 * 16 * 16;
+    std::array<std::uint32_t, SLOTS> m_words{};
+    std::array<bool, SLOTS> m_logged{};
+    std::array<std::string, 64> m_notes; // ignored-operation labels (stable storage)
+    size_t m_note_count = 0;
+
+    static size_t index(unsigned opc1, unsigned n, unsigned m, unsigned opc2) {
+        return (((opc1 & 15u) * 16u + (n & 15u)) * 16u + (m & 15u)) * 16u + (opc2 & 15u);
+    }
+    std::uint32_t &word(unsigned opc1, unsigned n, unsigned m, unsigned opc2) {
+        return m_words[index(opc1, n, m, opc2)];
+    }
+    std::uint32_t &slot(unsigned opc1, CoprocReg n, CoprocReg m, unsigned opc2, const char *what) {
+        size_t i = index(opc1, static_cast<unsigned>(n), static_cast<unsigned>(m), opc2);
+        if (!m_logged[i]) {
+            m_logged[i] = true;
+            log_info("dynarmic: p%u %s op1=%u c%u c%u op2=%u", m_number, what, opc1,
+                      static_cast<unsigned>(n), static_cast<unsigned>(m), opc2);
+        }
+        return m_words[i];
+    }
+    // An operation with no state to model (cache maintenance, debug, LDC/STC): log it once and
+    // let the guest continue, like a NOP. Unicorn would have run the real (mostly no-op) effect.
+    std::optional<Callback> ignored(const char *what, unsigned a, unsigned b) {
+        if (m_note_count == m_notes.size()) return Callback{[](void *, std::uint32_t, std::uint32_t) -> std::uint64_t { return 0; }, std::nullopt};
+        std::string &note = m_notes[m_note_count++];
+        note = "p" + std::to_string(m_number) + " " + what + " " + std::to_string(a) + "/" + std::to_string(b);
+        log_info("dynarmic: %s compiled as a no-op", note.c_str());
+        return Callback{[](void *, std::uint32_t, std::uint32_t) -> std::uint64_t { return 0; }, std::nullopt};
+    }
+    std::array<std::uint32_t *, 2> pair(unsigned opc, CoprocReg m, const char *what) {
+        // MCRR/MRRC: two consecutive opc2 slots under CRn=c15 (unused by the real map).
+        return {&slot(opc, CoprocReg::C15, m, 0, what), &slot(opc, CoprocReg::C15, m, 1, what)};
+    }
+};
+
+std::array<std::shared_ptr<SystemCoprocessor>, 16> g_coprocs;
+
 Env &env_at(int level) {
     if (level >= MAX_DEPTH) {
         log_error("dynarmic: guest calls nested deeper than %d", MAX_DEPTH);
@@ -220,6 +307,13 @@ Env &env_at(int level) {
         cfg.global_monitor = g_monitor.get();
         cfg.processor_id = 0;
         cfg.page_table = g_pages;
+        // Shared by every level (one CPU, one set of registers). cp10/cp11 are VFP/NEON, which
+        // Dynarmic implements itself.
+        for (unsigned i = 0; i < 16; ++i) {
+            if (i == 10 || i == 11) continue;
+            if (!g_coprocs[i]) g_coprocs[i] = std::make_shared<SystemCoprocessor>(i);
+            cfg.coprocessors[i] = g_coprocs[i];
+        }
         cfg.absolute_offset_page_table = false; // host = page_table[va >> 12] + (va & 0xfff)
         if (const char *fm = std::getenv("CODBOZ_DYN_FASTMEM"); fm && std::strcmp(fm, "1") == 0)
             cfg.fastmem_pointer = 0;
