@@ -71,6 +71,9 @@ Call of the Dead (rodada 1, mesma metodologia, sem vsync):
 | Dynarmic (page table) | 211.2 | 3.7 |
 | Dynarmic + `CODBOZ_DYN_CODE_WATCH=1` | 197.7 | 4.0 |
 
+Modo iOS 1.3.5 (tutorial, sem vsync, últimos 15 s de gameplay): Unicorn 51.2 fps (emu 18.8 ms) →
+Dynarmic 256.8 fps (emu 3.2 ms).
+
 Código auto-modificável: `CODBOZ_DYN_CODE_WATCH=1` tira da page table do JIT as páginas de onde ele
 buscou instruções; escritas nelas passam pelos callbacks e invalidam o código se atingirem uma
 palavra já traduzida. Em COTD (Reimagined), no modo Original e no modo iOS: **zero** escritas em
