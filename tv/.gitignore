@@ -2,12 +2,12 @@
 /Call of Duty Black Ops/
 /obb/
 /obb_moon/
-/build/base.apk
+/base.apk
 /maps/pc/
 /maps/mobile/
 
 # === Saídas de build ===
-/build/out/
+/out/
 /maps/out/
 *.apk
 *.apk.part*
@@ -52,18 +52,18 @@ production/session-state/
 .claude/agent-memory/
 .claude/worktrees/
 docs/consistency-failures.md
-/build/re/out/
-build/menus-style/previews/
-build/menus-style/design/*.svg
-build/menus-style/design/comic.ttf
+/re/out/
+menus-style/previews/
+menus-style/design/*.svg
+menus-style/design/comic.ttf
 
 # === Assets do jogo (extraídos do seu próprio APK/OBB; não são distribuídos) ===
-build/character-menu/assets/*.png
-build/character-menu/assets/*.ttf
-build/hud/*.png
-build/menus/shots/
-build/main-menu/assets/*.png
-build/branding/assets/*.png
+character-menu/assets/*.png
+character-menu/assets/*.ttf
+hud/*.png
+menus/shots/
+main-menu/assets/*.png
+branding/assets/*.png
 menus-edit/tv-current/
 menus-edit/night-*/
 maps/menu/

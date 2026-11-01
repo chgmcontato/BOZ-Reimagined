@@ -65,7 +65,7 @@ Check your files first: the patch will not apply to any other version. The OBB i
 
 | File | Size | SHA-256 |
 |---|---|---|
-| Android APK 1.0.11 (`com.activision.boz`) → `build/base.apk` | 48,440,698 bytes | `348c3ca53291b28380eca44f25198cc64e2e8ce9d56ed4ac170310aff3a86747` |
+| Android APK 1.0.11 (`com.activision.boz`) → `tv/base.apk` | 48,440,698 bytes | `348c3ca53291b28380eca44f25198cc64e2e8ce9d56ed4ac170310aff3a86747` |
 | `assets/boz.s3e` (inside the APK) | — | `f458c15a7111779ad320af377d0bb751294119788ba06d430bee0cc977539fee` |
 | OBB `blackops_etc.dz` (original, goes to the TV **unchanged**) | 526,783,202 bytes | `4537aabe0be836048bafd7493ac5f18b33c0bc19d6dd0b873533bb953bbd3a91` |
 
@@ -133,17 +133,17 @@ of its local IP (`bash instalar.sh <ZeroTier-IP> ...`), as long as that TV has a
 
 Requirements: Linux, JDK 17, Android SDK (build-tools 36, platform 36), `tools/apktool.jar`, `tools/baksmali.jar`,
 Python 3 and ImageMagick. The build also uses images and fonts extracted from the game (portraits, backgrounds, HUD
-digits and menu reference shots) that are not in the repository: see `build/character-menu/sources.json` and the
-`menus-edit/` scripts. With everything in place, `bash build/build.sh` produces `BOZ-TV.apk`.
+digits and menu reference shots) that are not in the repository: see `tv/character-menu/sources.json` and the
+`menus-edit/` scripts. With everything in place, `bash tv/build.sh` produces `BOZ-TV.apk`.
 
 ## How it works
 
 - The game runs on the Marmalade engine as a closed binary (`boz.s3e`, ARM/Thumb). Gameplay changes are
-  **binary patches** verified byte by byte (`build/patch_s3e.py`, `patch_pickups.py` and others), with new code
+  **binary patches** verified byte by byte (`tv/patch_s3e.py`, `patch_pickups.py` and others), with new code
   placed in a free area of the image.
-- Controls, menus, pause and timer are a **Java layer** (`build/java/com/carlos/boz/`) that recognizes each screen
+- Controls, menus, pause and timer are a **Java layer** (`tv/java/com/carlos/boz/`) that recognizes each screen
   by its pixels and draws on top, without touching the menu SWF.
-- Reverse-engineering tools (Ghidra, Frida, `.group.bin` format) live in `build/re/`, `build/frida/` and `maps/`.
+- Reverse-engineering tools (Ghidra, Frida, `.group.bin` format) live in `tv/re/`, `tv/frida/` and `tv/maps/`.
 - [`CLAUDE.md`](CLAUDE.md) is the full technical log (in Portuguese): offsets, pitfalls and decisions.
 
 ## Roadmap
