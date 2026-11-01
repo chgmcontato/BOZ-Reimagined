@@ -1,0 +1,15 @@
+# compiled output and the installed game data/saves (build/game) — never commit
+/build/
+/build-dev/
+/game/
+*.o
+__pycache__/
+# game files and builds
+*.apk
+*.ipa
+*.dz
+*.s3e
+*.jks
+*.keystore
+# reference screenshots / mockups
+/Sem título*.png
