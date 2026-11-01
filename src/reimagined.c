@@ -208,8 +208,20 @@ static void zcount_thunk(void) {
     ret((uint32_t)count);
 }
 
+/* The reimagined build keeps the engine's debug frame counter (IwGxPrintFrameRate) always on; the
+ * port draws its own (F3 / launcher), so the native one is turned into "bx lr". */
+static void hide_native_fps(void) {
+    uint32_t *fn = G2H(IMG(0x2ad888));
+    if (*fn != 0xe59f307cu) { /* ldr r3, [pc, #0x7c] */
+        log_info("fps: native counter not found");
+        return;
+    }
+    *fn = 0xe12fff1eu; /* bx lr (ARM) */
+}
+
 /* Reimagined build only: route its zcount to zcount_thunk (keeps the solo numbers, adds co-op). */
 void reimagined_patch_waves(void) {
+    hide_native_fps();
     uint8_t *fn = G2H(IMG(0x410900));
     static const uint8_t expect[] = {0x09, 0x29, 0x02, 0xd8, 0x0b, 0xa2, 0x50, 0x5c};
     if (memcmp(fn, expect, sizeof(expect)) != 0) {

@@ -221,7 +221,12 @@ int main(int argc, char **argv) {
         return 1;
     }
     if (!emu_init()) {
-        fatal("Unable to set up the ARM emulator memory.");
+        /* Initialization errors are already logged. In particular, a rejected
+         * experimental TLB setting must exit instead of blocking on a dialog. */
+        log_error("Unable to initialize the ARM emulator; exiting.");
+        emu_shutdown();
+        SDL_Quit();
+        return 1;
     }
     if (!video_init()) {
         fatal("Unable to open an OpenGL window.");

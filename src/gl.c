@@ -6,6 +6,7 @@
 #include "icon_data.h"
 #include "host.h"
 #include "overlay.h"
+#include "gl_state.h"
 
 #include <SDL.h>
 #include <stdlib.h>
@@ -67,6 +68,18 @@ static int g_current;
 
 static SDL_Window *g_window;
 static SDL_GLContext g_context;
+static int g_swap_interval;
+
+static void configure_swap_interval(void) {
+    const char *override = getenv("CODBOZ_NO_VSYNC");
+    bool force_off = override && strcmp(override, "0") != 0;
+    int requested = force_off ? 0 : (g_opt.vsync ? 1 : 0);
+    int result = SDL_GL_SetSwapInterval(requested);
+    g_swap_interval = SDL_GL_GetSwapInterval();
+    log_info("vsync: requested %d, reported %d, override %s, fps_limit %d%s%s",
+             requested, g_swap_interval, force_off ? "off" : "none", g_opt.fps_limit,
+             result ? ", SDL error: " : "", result ? SDL_GetError() : "");
+}
 /*
  * The game always renders into a 1280x720 framebuffer, the TV's resolution: the
  * Flash menus lay out differently at other sizes, and the reimagined layer (menu
@@ -145,7 +158,23 @@ bool video_init(void) {
         return false;
     }
     SDL_GL_MakeCurrent(g_window, g_context);
-    SDL_GL_SetSwapInterval(g_opt.vsync ? 1 : 0);
+    configure_swap_interval();
+    {
+        int32_t units = 0, attributes = 0;
+        void (*get_integer)(uint32_t, int32_t *) = gl_proc("glGetIntegerv");
+        get_integer(0x8b4d, &units); /* GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS */
+        get_integer(0x8869, &attributes); /* GL_MAX_VERTEX_ATTRIBS */
+        const char *cache = getenv("CODBOZ_GL_CACHE");
+        bool enabled = !cache || strcmp(cache, "0") != 0;
+        gl_state_init(enabled, units > 0 ? (unsigned)units : 0,
+                      attributes > 0 ? (unsigned)attributes : 0);
+        const char *client = getenv("CODBOZ_GL_CLIENT_ARRAY_CACHE");
+        bool client_enabled = !client || strcmp(client, "0") != 0;
+        gl_state_client_arrays(client_enabled);
+        log_info("GL state cache: %s (CODBOZ_GL_CACHE=0 disables)", enabled ? "on" : "off");
+        log_info("GL client-array cache: %s (compatibility context, VAO zero only)",
+                 enabled && client_enabled ? "on" : "off");
+    }
     SDL_GL_GetDrawableSize(g_window, &g_width, &g_height);
     log_info("OpenGL %s on %s, drawable %dx%d",
              (const char *)((const uint8_t *(*)(uint32_t))gl_proc("glGetString"))(GL_VERSION_ENUM),
@@ -161,6 +190,7 @@ bool video_init(void) {
 }
 
 void video_shutdown(void) {
+    gl_state_invalidate();
     if (g_context) {
         SDL_GL_DeleteContext(g_context);
         g_context = NULL;
@@ -179,6 +209,7 @@ void video_enter_game(void) {
         SDL_SetWindowSize(g_window, g_opt.width, g_opt.height);
     }
     SDL_PumpEvents();
+    configure_swap_interval(); /* Fullscreen transitions can reset swap policy. */
     SDL_GL_GetDrawableSize(g_window, &g_win_w, &g_win_h);
 
     GLFN(void, glGenFramebuffers, int32_t, uint32_t *);
@@ -307,6 +338,8 @@ void video_debug_capture(void) {
 }
 
 void video_swap(void) {
+    /* The presentation/HUD code uses native GL directly, outside guest thunks. */
+    gl_state_invalidate();
     GLFN(void, glBindFramebuffer, uint32_t, uint32_t);
     if (g_game_fbo) {
         present_game();
@@ -318,11 +351,13 @@ void video_swap(void) {
     if (g_game_fbo) {
         glBindFramebuffer(0x8d40, g_game_fbo);
     }
-    if (!g_opt.vsync) {
+    if (g_swap_interval == 0) {
         pace_frame();
     }
     g_perf.swap_us += monotonic_us() - swap0;
     input_after_swap();
+    gl_state_invalidate();
+    timer_frame_tick();
 }
 
 /* ---- EGL ---- */
@@ -470,6 +505,7 @@ IMPORT(eglDestroyContext) {
 }
 
 IMPORT(eglMakeCurrent) {
+    gl_state_invalidate();
     g_current = arg(3) != 0;
     ret(1);
 }

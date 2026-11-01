@@ -8,6 +8,7 @@
 #include "reimagined.h"
 #include "screens.h"
 #include "ui.h"
+#include "gl_state.h"
 
 static uint64_t g_fps_window_start;
 static int g_fps_frames;
@@ -47,6 +48,8 @@ void overlay_draw(int width, int height) {
         if (perf_on && !perf_start) {
             perf_start = monotonic_us();
             memset(&g_perf, 0, sizeof(g_perf));
+            gl_state_reset_counts();
+            timer_perf_reset();
             perf_frames = 0;
         } else if (perf_on && monotonic_us() - perf_start >= 1000000) {
             double total = (double)(monotonic_us() - perf_start), f = perf_frames ? (double)perf_frames : 1;
@@ -61,6 +64,13 @@ void overlay_draw(int width, int height) {
                 emu_perf_top(top, sizeof(top));
                 log_info("perf: top calls/s %s", top);
             }
+            gl_state_report(total / 1000000.0);
+            timer_perf_report(total / 1000000.0);
+            log_info("perf: window frames=%llu elapsed_us=%.0f",
+                     (unsigned long long)perf_frames, total);
+            log_info("perf: scene map=%s round=%d active=%d state=%s", reimagined_map(),
+                     reimagined_round(), reimagined_match_active(),
+                     screens_current() ? screens_current() : "gameplay");
             perf_start = monotonic_us();
             memset(&g_perf, 0, sizeof(g_perf));
             perf_frames = 0;

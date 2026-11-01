@@ -54,6 +54,7 @@ struct vfile {
 };
 
 static struct dtrz_index g_dtrz;
+static FILE *g_dtrz_fp = NULL; /* Keep the archive open across asset reads. */
 static struct vfile g_files[MAX_FILES];
 static uint32_t g_handle_base; /* guest-visible handle tokens */
 static int32_t g_file_error;
@@ -203,16 +204,31 @@ static int dtrz_load_index(void) {
             return 0;
         }
     }
-    char scratch[DTRZ_NAME_MAX];
-    for (uint16_t i = 0; i < group_count; ++i) {
-        if (!read_c_string(file, scratch, sizeof(scratch))) {
+    /* directory names: several files share a name (every map has loading/<map>/loading_droid...),
+     * so the directory is needed to tell them apart */
+    static char dirs[DTRZ_MAX_ENTRIES][DTRZ_NAME_MAX];
+    for (uint16_t i = 0; i < group_count && i < DTRZ_MAX_ENTRIES; ++i) {
+        if (!read_c_string(file, dirs[i], DTRZ_NAME_MAX)) {
             fclose(file);
             return 0;
         }
     }
-    uint8_t marker[4];
-    if (fread(marker, 1, 4, file) != 4 || le32(marker) != 1 ||
-        fseek(file, (long)file_count * 6L, SEEK_CUR) != 0) {
+    /* u16 marker (1), then per file {u16 index, u16 0xffff, u16 directory (2 = first name above)}, 2 bytes pad */
+    uint8_t marker[2];
+    if (fread(marker, 1, 2, file) != 2 || le16(marker) != 1) {
+        fclose(file);
+        return 0;
+    }
+    static uint16_t file_dir[DTRZ_MAX_ENTRIES];
+    for (uint16_t i = 0; i < file_count; ++i) {
+        uint8_t rec[6];
+        if (fread(rec, 1, 6, file) != 6) {
+            fclose(file);
+            return 0;
+        }
+        file_dir[i] = le16(rec + 4);
+    }
+    if (fseek(file, 2L, SEEK_CUR) != 0) {
         fclose(file);
         return 0;
     }
@@ -225,12 +241,29 @@ static int dtrz_load_index(void) {
         struct dtrz_entry *entry = &g_dtrz.entries[i];
         entry->offset = le32(record);
         entry->size = le32(record + 4);
-        lower_copy(entry->lower_name, DTRZ_NAME_MAX, entry->name);
+        char full[DTRZ_NAME_MAX * 2];
+        int d = (int)file_dir[i] - 2;
+        if (d >= 0 && d < group_count) {
+            snprintf(full, sizeof(full), "%s/%s", dirs[d], entry->name);
+        } else {
+            snprintf(full, sizeof(full), "%s", entry->name);
+        }
+        for (char *c = full; *c; ++c) {
+            if (*c == '\\') *c = '/';
+        }
+        lower_copy(entry->lower_name, DTRZ_NAME_MAX, full); /* "loading/kino/loading_droid.group.bin" */
         lower_copy(entry->lower_base, DTRZ_NAME_MAX, base_name(entry->name));
     }
     g_dtrz.count = file_count;
     fclose(file);
     log_info("archive %s: %zu entries", g_dtrz.path, g_dtrz.count);
+    if (getenv("CODBOZ_LIST_ARCHIVE")) {
+        for (size_t i = 0; i < g_dtrz.count; ++i) {
+            if (strstr(g_dtrz.entries[i].lower_name, getenv("CODBOZ_LIST_ARCHIVE"))) {
+                log_info("entry %s", g_dtrz.entries[i].lower_name);
+            }
+        }
+    }
     return 1;
 }
 
@@ -241,9 +274,28 @@ static const struct dtrz_entry *dtrz_find(const char *name) {
     char lower[DTRZ_NAME_MAX];
     lower_copy(lower, sizeof(lower), name);
     const char *lower_base = base_name(lower);
+    /* the archive's paths have no "data-etc/" texture-set prefix; normalise slashes ("a//b", "a\\b") */
+    char path[DTRZ_NAME_MAX];
+    const char *in = lower;
+    if (strncmp(in, "data-", 5) == 0 && strchr(in, '/')) {
+        in = strchr(in, '/') + 1;
+    }
+    size_t n = 0;
+    for (; *in && n + 1 < sizeof(path); ++in) {
+        char c = *in == '\\' ? '/' : *in;
+        if (c == '/' && (n == 0 || path[n - 1] == '/')) continue;
+        path[n++] = c;
+    }
+    path[n] = 0;
+    /* exact path first: many maps share file names (every loading screen is
+     * loading/<map>/loading_droid.group.bin), so a name-only match returned the first map's */
     for (size_t i = 0; i < g_dtrz.count; ++i) {
-        if (strcmp(g_dtrz.entries[i].lower_name, lower) == 0 ||
-            strcmp(g_dtrz.entries[i].lower_base, lower_base) == 0) {
+        if (strcmp(g_dtrz.entries[i].lower_name, path) == 0) {
+            return &g_dtrz.entries[i];
+        }
+    }
+    for (size_t i = 0; i < g_dtrz.count; ++i) {
+        if (strcmp(g_dtrz.entries[i].lower_base, lower_base) == 0) {
             return &g_dtrz.entries[i];
         }
     }
@@ -262,18 +314,19 @@ static uint32_t open_dtrz(const char *name) {
     if (!entry) {
         return 0;
     }
-    FILE *archive = fopen(g_dtrz.path, "rb");
-    if (!archive) {
+    if (!g_dtrz_fp) {
+        g_dtrz_fp = fopen(g_dtrz.path, "rb");
+    }
+    if (!g_dtrz_fp) {
         return 0;
     }
     uint8_t *buffer = malloc(entry->size ? entry->size : 1);
-    if (!buffer || fseek(archive, (long)entry->offset, SEEK_SET) != 0 ||
-        fread(buffer, 1, entry->size, archive) != entry->size) {
-        fclose(archive);
+    clearerr(g_dtrz_fp);
+    if (!buffer || fseek(g_dtrz_fp, (long)entry->offset, SEEK_SET) != 0 ||
+        fread(buffer, 1, entry->size, g_dtrz_fp) != entry->size) {
         free(buffer);
         return 0;
     }
-    fclose(archive);
     uint32_t size = entry->size;
     codboz_patch_archive_entry(entry->name, &buffer, &size);
     return vfile_new(NULL, buffer, size, 1);
