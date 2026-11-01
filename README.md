@@ -216,7 +216,7 @@ On the pause screen, T toggles the match timer. F11: fullscreen. F3: FPS counter
 |---|---|
 | `src/`, `Makefile`, `run.sh` | PC port. `make` builds `build/codboz-pc`; `make clean` keeps `build/game` (installed data and saves) |
 | `tv/` | Android TV project: patchers, Java layer (`tv/java`), installer, map tools, docs |
-| `third_party/` | Dynarmic (submodule), cJSON, LZMA SDK, stb |
+| `third_party/` | Dynarmic (submodule), cJSON, LZMA SDK, dr_mp3, stb (each under its own license) |
 | `tools/` | tests, the Dynarmic probe, code generators |
 | `docs/screenshots/` | images used in this README |
 
