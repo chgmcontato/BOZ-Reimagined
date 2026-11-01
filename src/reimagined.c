@@ -470,7 +470,8 @@ static void draw_coop_pause(void) {
     ui_label(dots[(now / 400) % 4], end, y + 138, 24, paper, UI_LEFT);
 
     char line[96];
-    int present = g_coop_pause.peers + 1, expected = g_coop_pause.peak + 1;
+    /* network+0x64 counts this device too: 2 with two players, 1 after the drop (seen on the TV) */
+    int present = g_coop_pause.peers > 0 ? g_coop_pause.peers : 1, expected = g_coop_pause.peak;
     if (expected <= present) {
         expected = present + 1; /* preview, or the count was not read yet */
     }

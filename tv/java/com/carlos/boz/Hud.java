@@ -399,13 +399,19 @@ final class Hud {
      * a cada 3 s: com m_Base velho, peekInt derrubava o processo (SIGSEGV em forgetPlayer). Relê a lista e confere a
      * assinatura antes das leituras da rodada; se mudou, a imagem é procurada de novo.
      */
+    private final byte[] m_SigBuf = new byte[SIG.length];
     private void checkBase() {
         if (m_Base < 0)
             return;
         try {
-            m_MapsAt = 0;
+            // Antes zerava m_MapsAt aqui: o /proc/self/maps era relido 8x por segundo e a thread BozHud
+            // gastava ~90% de um núcleo (medido na TV). Só força a releitura se a assinatura não estiver
+            // numa área conhecida.
             long sig = m_Base + SIG_OFFSET;
-            byte[] b = new byte[SIG.length];
+            byte[] b = m_SigBuf;
+            if (!readable(sig, b.length)) {
+                m_MapsAt = 0;
+            }
             if (readable(sig, b.length)) {
                 s_PeekBytes.invoke(null, sig, b, 0, b.length);
                 if (java.util.Arrays.equals(b, SIG))
@@ -453,8 +459,9 @@ final class Hud {
                     s_PokeByte.invoke(null,state+0x50,(byte)0);
                 m_OwnedPause=0;
             }
-            s_WaitPresent=m_CoopPause.peers()+1;
-            s_WaitExpected=Math.max(m_CoopPause.peak()+1,s_WaitPresent+1);
+            // network+0x64 já conta o próprio aparelho (2 com dois jogadores, 1 depois da queda)
+            s_WaitPresent=Math.max(1,m_CoopPause.peers());
+            s_WaitExpected=Math.max(m_CoopPause.peak(),s_WaitPresent+1);
             if(waiting!=s_WaitingPlayer) {
                 if(waiting)s_WaitSince=android.os.SystemClock.uptimeMillis();
                 s_WaitingPlayer=waiting;
@@ -513,11 +520,12 @@ final class Hud {
             try (BufferedReader r = new BufferedReader(new FileReader("/proc/self/maps"))) {
                 String line;
                 while ((line = r.readLine()) != null) {
-                    String[] f = line.split("\\s+");
-                    if (f.length < 2 || f[1].charAt(0) != 'r')
+                    // "start-end perms ...": sem regex, para não gerar lixo
+                    int dash = line.indexOf('-'), sp = line.indexOf(' ');
+                    if (dash <= 0 || sp <= dash || sp + 4 > line.length() || line.charAt(sp + 1) != 'r')
                         continue;
-                    String[] ab = f[0].split("-");
-                    maps.add(new long[]{Long.parseLong(ab[0], 16), Long.parseLong(ab[1], 16), f[1].startsWith("rwx") ? 1 : 0});
+                    boolean rwx = line.charAt(sp + 2) == 'w' && line.charAt(sp + 3) == 'x';
+                    maps.add(new long[]{Long.parseLong(line.substring(0, dash), 16), Long.parseLong(line.substring(dash + 1, sp), 16), rwx ? 1 : 0});
                 }
             }
             m_Maps = maps;
