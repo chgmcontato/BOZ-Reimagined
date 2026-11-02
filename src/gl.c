@@ -203,6 +203,14 @@ void video_shutdown(void) {
 }
 
 /* Before the game boots: borderless fullscreen at the monitor's resolution, if set. */
+/* The Reimagined menus are measured on the game's 1280x720 layout: at other sizes the game lays its
+ * Flash pages out differently and nothing lines up. The window keeps the chosen size and scales it. */
+static bool g_fixed_surface;
+
+void video_fix_surface(void) {
+    g_fixed_surface = true;
+}
+
 void video_enter_game(void) {
     if (g_opt.fullscreen) {
         SDL_SetWindowFullscreen(g_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -212,6 +220,10 @@ void video_enter_game(void) {
     SDL_PumpEvents();
     configure_swap_interval(); /* Fullscreen transitions can reset swap policy. */
     SDL_GL_GetDrawableSize(g_window, &g_win_w, &g_win_h);
+    if (g_fixed_surface) {
+        g_width = 1280;
+        g_height = 720;
+    }
 
     GLFN(void, glGenFramebuffers, int32_t, uint32_t *);
     GLFN(void, glGenRenderbuffers, int32_t, uint32_t *);

@@ -276,6 +276,10 @@ int main(int argc, char **argv) {
     register_all();
     config_load_image(image.file_data + image.header.config_offset, image.header.config_size);
 
+    if (mode == MODE_REIMAGINED) {
+        extern void video_fix_surface(void);
+        video_fix_surface();
+    }
     video_enter_game();
     /* the menu recognition data and TV art: from this mode, else from the reimagined install */
     snprintf(path, sizeof(path), "%s/assets/boz_menus.json", g_root);
