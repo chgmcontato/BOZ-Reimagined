@@ -62,9 +62,10 @@ static uint32_t ingame_state(void) {
 }
 static void sync_coop_pause(bool active) {
     uint32_t state=ingame_state(), network=rd(IMG(0x4958d4));
-    if(active && (!state || !network))return;
+    if(active && !state)return;
     bool before=g_coop_pause.waiting;
-    bool waiting=coop_pause_update(&g_coop_pause,active,state,active?(int)rd(network+0x64):0);
+    /* no network object in a live co-op match means nobody is connected */
+    bool waiting=coop_pause_update(&g_coop_pause,active,state,active&&network?(int)rd(network+0x64):0,monotonic_ms());
     /* re-assert after a native pause/unpause so the freeze cannot be bypassed */
     if(waiting && state && (rd(state+0x50)&255u)==0) {
         *(volatile uint8_t *)G2H(state+0x50)=1;g_owned_pause=state;
@@ -73,7 +74,7 @@ static void sync_coop_pause(bool active) {
             *(volatile uint8_t *)G2H(state+0x50)=0;
         g_owned_pause=0;
     }
-    if(before!=waiting)log_info("co-op: %s",waiting?"match paused, waiting for missing player":"party restored, match resumed");
+    if(before!=waiting)log_info("co-op: %s (%d of %d players)",waiting?"match paused, waiting for missing player":"party restored, match resumed",g_coop_pause.peers,g_coop_pause.baseline);
 }
 
 static bool timer_valid(void) {
@@ -82,6 +83,12 @@ static bool timer_valid(void) {
 
 bool reimagined_match_active(void) {
     return timer_valid() && rd(IMG(TIMER) + 8) == 1;
+}
+
+/* 1 co-op, 0 solo, -1 unknown (no match running or no level yet). */
+int reimagined_match_coop(void) {
+    uint32_t level = reimagined_match_active() ? rd(IMG(LEVEL)) : 0;
+    return level ? (rd(level + 0x208) & 0xffu) != 0 : -1;
 }
 
 bool reimagined_patched(void) {
@@ -446,6 +453,21 @@ void reimagined_frame(void) {
         }
     }
     sync_coop_pause(reimagined_match_active() && screens_coop_session());  /* includes the network check */
+    /* debug: CODBOZ_TEST_FREEZE=1 holds the pause byte from 25 s to 45 s of a match, to measure the freeze */
+    if (getenv("CODBOZ_TEST_FREEZE")) {
+        static uint64_t since;
+        uint64_t now = monotonic_ms();
+        uint32_t state = ingame_state();
+        if (!reimagined_match_active() || !state) {
+            since = 0;
+        } else {
+            if (!since) {
+                since = now;
+            }
+            bool hold = now - since >= 25000 && now - since < 45000;
+            *(volatile uint8_t *)G2H(state + 0x50) = hold;
+        }
+    }
     extern void reimagined_coop_stats_frame(void);
     reimagined_coop_stats_frame();
     bool gameplay = reimagined_match_active() && !screen;
@@ -480,11 +502,10 @@ static void draw_coop_pause(void) {
     ui_label(dots[(now / 400) % 4], end, y + 138, 24, paper, UI_LEFT);
 
     char line[96];
-    /* network+0x64 counts connections, which may include a stale one: only the drop is reliable */
-    int missing = g_coop_pause.peak - g_coop_pause.peers;
-    int expected = g_party >= 2 ? g_party : 2, present = expected - (missing > 0 ? missing : 1);
-    if (present < 1) {
-        present = 1;
+    int expected = g_coop_pause.baseline >= 2 ? g_coop_pause.baseline : 2;
+    int present = g_coop_pause.peers < 1 ? 1 : g_coop_pause.peers;
+    if (present >= expected) {
+        present = expected - 1;
     }
     snprintf(line, sizeof(line), "PLAYERS %d / %d", present, expected);
     ui_font(UI_FONT_BODY);
@@ -806,7 +827,7 @@ void reimagined_draw(void) {
         const char *env = getenv("CODBOZ_PREVIEW_COOP_PAUSE"); /* debug: show the card in any match */
         preview = env && *env == '1';
         if (preview) {
-            g_coop_pause.peak = 1;
+            g_coop_pause.baseline = 2;
         }
     }
     if (active && !screen && (g_coop_pause.waiting || preview)) {

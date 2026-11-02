@@ -43,7 +43,13 @@ static const struct screen *g_current, *g_last_known;
 static bool g_coop_session;
 
 bool screens_coop_session(void) {
-    return g_coop_session;
+    /* In a match the game's own flag decides: the frame recognition can miss the co-op lobby. */
+    if (getenv("CODBOZ_PREVIEW_COOP")) { /* debug: see the co-op menus in a solo match */
+        return true;
+    }
+    extern int reimagined_match_coop(void);
+    int native = reimagined_match_coop();
+    return native >= 0 ? native != 0 : g_coop_session;
 }
 static uint64_t g_next_ms, g_changed_ms, g_unknown_since;
 static uint32_t g_fbo, g_rb;
@@ -220,7 +226,7 @@ static int allowed_after(const struct screen *s) {
     if (reimagined_match_active() && front_end_only(s->id)) {
         return 0;
     }
-    if (strcmp(s->id, "leavecoop") == 0 && !g_coop_session) {
+    if (strcmp(s->id, "leavecoop") == 0 && !screens_coop_session()) {
         return 0;
     }
     if (!s->after_count || s == g_current) {
