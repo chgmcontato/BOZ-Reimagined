@@ -10,6 +10,7 @@
 #include "host.h"
 #include "install.h"
 #include "ui.h"
+#include "updater.h"
 
 #include <SDL.h>
 #include <ctype.h>
@@ -333,7 +334,10 @@ static void draw_rail(void) {
     ui_font(UI_FONT_DISPLAY);
     ui_label("BLACK OPS", 26, 58, 30, C_SNOW, UI_LEFT);
     ui_label("ZOMBIES", 26, 88, 30, C_ACCENT_HI, UI_LEFT);
-    label("PC", 28, 110, 12, C_DIM, UI_LEFT);
+    char version[48];
+    snprintf(version, sizeof(version), strcmp(updater_version(), "dev") == 0 ? "PC  ·  %s" : "PC  ·  v%s",
+             updater_version());
+    label(version, 28, 110, 12, C_DIM, UI_LEFT);
 
     const char *const names[PAGE_COUNT] = {TR("Jogar", "Play"), TR("Configurações", "Settings"),
                                            TR("Controles", "Controls")};
@@ -587,6 +591,22 @@ static void draw_settings(void) {
         g_opt.invert_y = false;
         changed = true;
     }
+    /* automatic updates: right of the reset button, with this build's version */
+    bool dev = strcmp(updater_version(), "dev") == 0;
+    char ver[96];
+    if (dev) {
+        snprintf(ver, sizeof(ver), "%s", TR("Versão de desenvolvimento", "Development build"));
+    } else {
+        snprintf(ver, sizeof(ver), TR("Versão %s", "Version %s"), updater_version());
+    }
+    label(TR("Atualizar automaticamente", "Update automatically"), cx - 56, y + 16, 15, C_SNOW, UI_RIGHT);
+    label(ver, cx - 56, y + 33, 12, C_DIM, UI_RIGHT);
+    bool au = toggle(cx - 44, y + 7, g_opt.auto_update);
+    if (au != g_opt.auto_update) {
+        g_opt.auto_update = au;
+        updater_set_enabled(au);
+        changed = true;
+    }
     if (changed) {
         settings_save();
     }
@@ -645,6 +665,18 @@ static void draw_footer(void) {
         icon(g_message_bad ? ICON_ALERT : ICON_CHECK, RAIL_W + 24, y + 23, 16,
              g_message_bad ? C_BAD : C_OK);
         label(g_message, RAIL_W + 48, y + 37, 13, g_message_bad ? C_BAD : C_SAND, UI_LEFT);
+    } else if (updater_state() == UPDATER_DOWNLOADING) {
+        char text[128];
+        snprintf(text, sizeof(text), TR("Baixando a atualização %s...", "Downloading update %s..."),
+                 updater_new_version());
+        icon(ICON_ALERT, RAIL_W + 24, y + 23, 16, C_GOLD);
+        label(text, RAIL_W + 48, y + 37, 13, C_GOLD, UI_LEFT);
+    } else if (updater_state() == UPDATER_FAILED) {
+        char text[128];
+        snprintf(text, sizeof(text), TR("Não foi possível atualizar para %s.", "Could not update to %s."),
+                 updater_new_version());
+        icon(ICON_ALERT, RAIL_W + 24, y + 23, 16, C_BAD);
+        label(text, RAIL_W + 48, y + 37, 13, C_BAD, UI_LEFT);
     } else {
         label(g_mode == MODE_REIMAGINED ? TR("Modo Reimagined", "Reimagined mode")
               : g_mode == MODE_IOS      ? TR("Modo iOS", "iOS mode")
@@ -812,7 +844,26 @@ enum game_mode launcher_run(char *obb, size_t obb_size) {
     g_page = getenv("CODBOZ_LAUNCHER_PAGE") ? (enum page)(atoi(getenv("CODBOZ_LAUNCHER_PAGE")) % PAGE_COUNT)
                                             : PAGE_PLAY;
     g_focus = 0;
+    bool restart_next_frame = false;
     while (g_page != PAGE_START) {
+        if (restart_next_frame) {
+            save_cfg();
+            updater_restart(); /* returns only when the new version could not be started */
+            restart_next_frame = false;
+            message(true, TR("Atualizado, mas não foi possível reabrir. Abra o jogo de novo.",
+                             "Updated, but could not reopen. Start the game again."));
+        } else if (updater_state() == UPDATER_READY && !g_editing_name && g_capture_action < 0) {
+            /* restart into the new version, unless the player is typing or binding a key */
+            static bool once;
+            if (!once) {
+                once = true;
+                char text[128];
+                snprintf(text, sizeof(text), TR("Atualizado para %s. Reiniciando...", "Updated to %s. Restarting..."),
+                         updater_new_version());
+                message(false, text);
+                restart_next_frame = true;
+            }
+        }
         g_click = false;
         g_activate = false;
         g_left = g_right = false;

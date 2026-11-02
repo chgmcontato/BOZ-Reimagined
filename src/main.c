@@ -4,6 +4,7 @@
 #include "launcher.h"
 #include "loader.h"
 #include "reimagined.h"
+#include "updater.h"
 
 #include <SDL.h>
 #include <ctype.h>
@@ -224,6 +225,7 @@ int main(int argc, char **argv) {
         return ok ? 0 : 1;
     }
     settings_load();
+    updater_init(argc, argv, g_opt.auto_update);
     char path[1300];
     snprintf(path, sizeof(path), "%s/bindings.txt", g_data_root);
     bindings_load(path);

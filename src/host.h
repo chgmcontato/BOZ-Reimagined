@@ -48,6 +48,7 @@ struct host_options {
     bool invert_y;
     bool mouse_drag; /* mouse = a finger dragging on the screen (1:1), else a look stick */
     bool english;    /* launcher language: English, else Portuguese */
+    bool auto_update; /* release builds: install new GitHub releases (updater.c) */
 };
 extern struct host_options g_opt;
 

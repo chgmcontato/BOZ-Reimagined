@@ -30,6 +30,7 @@ struct host_options g_opt = {
     .invert_y = false,
     .mouse_drag = false,
     .english = true, /* launcher language; Portuguese is one click away */
+    .auto_update = true,
 };
 
 static char *trim(char *text) {
@@ -209,10 +210,10 @@ void settings_save(void) {
             "# Call of Duty: Black Ops Zombies - PC settings\n"
             "# width/height: game image size; fullscreen=1 scales it to the monitor, borderless\n"
             "fullscreen=%d\nwidth=%d\nheight=%d\nvsync=%d\nfps_limit=%d\nshow_fps=%d\n"
-            "mouse_sensitivity=%.2f\nmouse_y_scale=%.2f\ninvert_y=%d\nmouse_look=%s\nlanguage=%s\nplayer_name=%s\n",
+            "mouse_sensitivity=%.2f\nmouse_y_scale=%.2f\ninvert_y=%d\nmouse_look=%s\nlanguage=%s\nauto_update=%d\nplayer_name=%s\n",
             g_opt.fullscreen, g_opt.width, g_opt.height, g_opt.vsync, g_opt.fps_limit,
             g_opt.show_fps, g_opt.mouse_sensitivity, g_opt.mouse_y_scale, g_opt.invert_y,
-            g_opt.mouse_drag ? "drag" : "stick", g_opt.english ? "en" : "pt", g_player_name);
+            g_opt.mouse_drag ? "drag" : "stick", g_opt.english ? "en" : "pt", g_opt.auto_update, g_player_name);
     fclose(file);
 }
 
@@ -309,6 +310,8 @@ void settings_load(void) {
             g_opt.show_fps = parse_bool(value);
         } else if (strcmp(key, "language") == 0) {
             g_opt.english = strcmp(value, "en") == 0;
+        } else if (strcmp(key, "auto_update") == 0) {
+            g_opt.auto_update = parse_bool(value);
         } else if (strcmp(key, "mouse_look") == 0) {
             g_opt.mouse_drag = strcmp(value, "stick") != 0;
         } else if (strcmp(key, "mouse_y_scale") == 0) {
