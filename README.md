@@ -104,7 +104,7 @@ Play on **PC (Linux & Windows)** or **Android TV**, together in co-op, from your
 
 1. Download from [**Releases**](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest):
    - **Windows 10/11:** `codboz-pc-windows-x64.zip` (one `.exe`, no extra DLLs)
-   - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (needs SDL2 and glibc 2.39+)
+   - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (needs SDL2 and glibc 2.38+)
 2. Run it. In the launcher: **Install APK** (or **Install IPA**) → **Choose** (Game data) → **PLAY**.
 
 ```bash
