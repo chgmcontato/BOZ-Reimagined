@@ -45,6 +45,7 @@ DYN_CMAKE_SYSTEM := -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=x86_64 
 endif
 
 SRC := \
+  src/aim_probe.c \
   src/assets.c \
   src/audio.c \
   src/bindings.c \

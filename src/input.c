@@ -1016,6 +1016,11 @@ static void update_gameplay(float dt) {
             g_look_y = 0;
         }
     }
+    {
+        extern void aim_probe_frame(bool in_match, int mouse_dx, int mouse_dy);
+        aim_probe_frame(reimagined_match_active(), g_captured && !look_hold ? (int)g_mouse_dx : 0,
+                        g_captured && !look_hold ? (int)g_mouse_dy : 0);
+    }
     if (!look_hold) {
         g_mouse_dx = g_mouse_dy = 0;
     }
