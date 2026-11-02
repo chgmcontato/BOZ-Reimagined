@@ -636,12 +636,6 @@ static void handle_event(const SDL_Event *ev) {
             reimagined_toggle_timer();
             break;
         }
-        if (sc == SDL_SCANCODE_L && down) {
-            extern bool menus_coop_leave(void);
-            if (menus_coop_leave()) {
-                break;
-            }
-        }
         if (menus_editing_name()) {
             if (down) {
                 menus_name_key(sc);

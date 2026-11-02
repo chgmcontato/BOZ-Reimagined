@@ -453,6 +453,10 @@ void reimagined_frame(void) {
         }
     }
     sync_coop_pause(reimagined_match_active() && screens_coop_session());  /* includes the network check */
+    /* debug: CODBOZ_PREVIEW_COOP=1 sets the game's co-op flag, so a solo match opens the native co-op pause */
+    if (getenv("CODBOZ_PREVIEW_COOP") && reimagined_match_active() && rd(IMG(LEVEL))) {
+        *(volatile uint8_t *)G2H(rd(IMG(LEVEL)) + 0x208) = 1;
+    }
     /* debug: CODBOZ_TEST_FREEZE=1 holds the pause byte from 25 s to 45 s of a match, to measure the freeze */
     if (getenv("CODBOZ_TEST_FREEZE")) {
         static uint64_t since;

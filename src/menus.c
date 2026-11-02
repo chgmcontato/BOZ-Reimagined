@@ -240,6 +240,12 @@ static void define_coop_pages(void) {
             s->buttons[0].art = art("main-menu/coop.png");
             s->buttons[1].art = art("main-menu/profile.png");
             set_button(&s->buttons[2], "back", "BACK", "", 76, 560, 240, 104, 267, 622, "main");
+        } else if (strcmp(s->id, "gameover") == 0) {
+            /* the native score card starts left of the measured window */
+            s->window[0] = 120;
+            s->window[1] = 140;
+            s->window[2] = 700;
+            s->window[3] = 390;
         } else if (strcmp(s->id, "coopwifi") == 0) {
             s->page = true;
             s->has_tag = false;
@@ -398,6 +404,24 @@ static void kit_rays(float cx, float cy, uint32_t color) {
         pts[7] = fminf(BODY_Y1 - 4, fmaxf(BODY_Y0 + 6, y0));
         ui_triangle(pts[0], pts[1], pts[4], pts[5], pts[6], pts[7], color);
     }
+}
+
+/* Art cropped to the rectangle: it never spills over the sheet. */
+static void kit_cover(const struct ui_image *im, float x, float y, float w, float h, uint32_t shade) {
+    if (!im->tex) {
+        return;
+    }
+    float aspect = w / h, iaspect = (float)im->w / (float)im->h;
+    float u0 = 0, u1 = 1, v0 = 0, v1 = 1;
+    if (iaspect > aspect) {
+        u0 = (1 - aspect / iaspect) / 2;
+        u1 = 1 - u0;
+    } else {
+        v0 = (1 - iaspect / aspect) * 0.4f;
+        v1 = v0 + iaspect / aspect;
+    }
+    ui_image_part(im, x, y, w, h, u0, v0, u1, v1, 1.0f);
+    ui_rect(x, y, w, h, shade);
 }
 
 static void kit_sheet(bool body) {
@@ -601,6 +625,10 @@ static void build_targets(const char *screen) {
         add_target(960, 560, 240, 104, 0, 0, T_START, 0, "", false);
         add_target(76, 560, 240, 104, 267, 622, T_TAP, 0, "*", false);
     } else if (s && s->page && coop_native_pause(screen)) {
+        /* the native controls, for the controller; the mouse reaches them directly */
+        add_target(115, 593, 222, 97, 200, 633, T_TAP, 0, "", true);
+        add_target(279, 166, 177, 181, 374, 290, T_TAP, 1, "pausesettings", false);
+        add_target(579, 380, 183, 144, 671, 475, T_TAP, 2, "leavecoop", false);
         const struct button *timer = coop_timer_button(s);
         if (timer) {
             struct button b = *timer;
@@ -738,7 +766,12 @@ static int map_scene(void) {
            : strstr(map, "callofthedead") ? 3 : strstr(map, "kino") || strstr(map, "theater") ? 0 : -1;
 }
 
-/* Co-op pause: the map, the round and the timer button. Nothing else, over the native pause. */
+/*
+ * Co-op pause: the game's own screen stays whole and working. Only this small box goes on top,
+ * with the map, the round and the timer button.
+ */
+enum { COOP_BOX_X = 448, COOP_BOX_Y = 26, COOP_BOX_W = 410, COOP_BOX_H = 112 };
+
 static const struct button *coop_timer_button(const struct style *s) {
     for (int i = 0; i < s->button_count; ++i) {
         if (s->buttons[i].timer) {
@@ -749,33 +782,29 @@ static const struct button *coop_timer_button(const struct style *s) {
 }
 
 static void coop_timer_bounds(struct button *b) {
-    b->x = 460;
-    b->y = 470;
-    b->w = 360;
-    b->h = 76;
+    b->x = COOP_BOX_X + 12;
+    b->y = COOP_BOX_Y + 62;
+    b->w = COOP_BOX_W - 24;
+    b->h = 40;
 }
 
 static void draw_coop_pause_page(const struct style *s) {
     extern int reimagined_round(void);
-    kit_sheet(true);
-    int scene = map_scene();
-    if (scene >= 0 && g_scenes[scene].tex) {
-        ui_image_cover(&g_scenes[scene], BODY_X0 + 6, BODY_Y0 + 6, BODY_X1 - BODY_X0 - 12, BODY_Y1 - BODY_Y0 - 12, 1.0f);
-        ui_rect(BODY_X0 + 6, BODY_Y0 + 6, BODY_X1 - BODY_X0 - 12, BODY_Y1 - BODY_Y0 - 12, 0x9c000000u);
-    }
-    kit_strip(60, 8, 520, "PAUSED");
-    const char *name = map_display_name();
-    if (name) {
-        text(name, 640, 270, 62, PAPER, 1000, true, UI_CENTER);
-    }
-    int round = reimagined_round();
     extern const char *reimagined_map(void);
+    float pts[8];
+    comic_pts(COOP_BOX_X, COOP_BOX_Y, COOP_BOX_W, COOP_BOX_H, 3, pts);
+    ui_quad(pts, 0xf00d0c0bu);
+    comic_outline(pts);
+    const char *name = map_display_name();
+    int round = reimagined_round();
     const char *map = reimagined_map();
-    if (round > 0 && !(map && strstr(map, "deadops"))) {
-        char line[32];
-        snprintf(line, sizeof(line), "ROUND %d", round);
-        text(line, 640, 370, 76, 0xfff5c518u, 800, true, UI_CENTER);
+    char line[64] = "";
+    if (name && round > 0 && !(map && strstr(map, "deadops"))) {
+        snprintf(line, sizeof(line), "%s - ROUND %d", name, round);
+    } else if (name) {
+        snprintf(line, sizeof(line), "%s", name);
     }
+    text(line, COOP_BOX_X + 16, COOP_BOX_Y + 44, 25, PAPER, COOP_BOX_W - 32, true, UI_LEFT);
     const struct button *t = coop_timer_button(s);
     if (t) {
         struct button b = *t;
@@ -814,8 +843,7 @@ static void draw_page(const struct style *s, const char *id) {
     if (pause) {
         int scene = map_scene();
         if (scene >= 0 && g_scenes[scene].tex) {
-            ui_image_cover(&g_scenes[scene], BODY_X0 + 6, BODY_Y0 + 6, BODY_X1 - BODY_X0 - 12, BODY_Y1 - BODY_Y0 - 12, 1.0f);
-            ui_rect(BODY_X0 + 6, BODY_Y0 + 6, BODY_X1 - BODY_X0 - 12, BODY_Y1 - BODY_Y0 - 12, 0x8c000000u);
+            kit_cover(&g_scenes[scene], BODY_X0 + 6, BODY_Y0 + 6, BODY_X1 - BODY_X0 - 12, BODY_Y1 - BODY_Y0 - 12, 0x8c000000u);
         }
     }
     if (s->has_window) {
@@ -844,7 +872,7 @@ static void draw_page(const struct style *s, const char *id) {
             text(line, 198, 236, 26, 0xfff5c518u, 640, true, UI_LEFT);
         }
     }
-    hint(!s->hint[0] ? hint_select_back()
+    hint(!s->hint[0] || strcmp(id, "gameover") == 0 ? hint_select_back()
          : input_has_controller() ? "D-PAD: NAVIGATE     A: SELECT     START: RESUME"
                                   : "CLICK: SELECT     ESC: RESUME",
          true);
@@ -1208,7 +1236,7 @@ static void activate(int index) {
         input_tap(t.tx, t.ty);
         /* page screens hide the Flash animation behind the curtain */
         if (t.to[0] && strcmp(t.to, "stay") != 0 && !t.to_game && screen &&
-            strncmp(screen, "title", 5) != 0) {
+            strncmp(screen, "title", 5) != 0 && !coop_native_pause(screen)) {
             begin_curtain(screen, t.tx, t.ty);
         }
         break;
@@ -1227,6 +1255,9 @@ bool menus_pointer_passthrough(float x, float y) {
     if (g_name_open || g_curtain) return false;
     const char *screen = screens_current();
     if (!screen) return true;
+    if (coop_native_pause(screen)) {
+        return !(x >= COOP_BOX_X && x < COOP_BOX_X + COOP_BOX_W && y >= COOP_BOX_Y && y < COOP_BOX_Y + COOP_BOX_H);
+    }
     const struct style *s = style_of(screen);
     bool drawn = strncmp(screen, "title", 5) == 0 || strcmp(screen, "main") == 0 ||
                  strcmp(screen, "charselect") == 0 || (s && s->page);
@@ -1257,6 +1288,17 @@ bool menus_click(float x, float y) {
             input_tap(640, 650);
         }
         return true;
+    }
+    if (coop_native_pause(screen)) {
+        /* the box takes its clicks; everything else is the game's own screen */
+        if (x >= COOP_BOX_X && x < COOP_BOX_X + COOP_BOX_W && y >= COOP_BOX_Y && y < COOP_BOX_Y + COOP_BOX_H) {
+            int box_hit = target_at(x, y);
+            if (box_hit >= 0 && g_targets[box_hit].kind == T_TIMER) {
+                activate(box_hit);
+            }
+            return true;
+        }
+        return false;
     }
     const struct style *s = style_of(screen);
     bool drawn = strcmp(screen, "main") == 0 || strcmp(screen, "charselect") == 0 || (s && s->page);
@@ -1407,13 +1449,4 @@ void menus_name_key(int scancode) {
         g_name_open = false;
         SDL_StopTextInput();
     }
-}
-
-/* The co-op pause shows no buttons but the timer; leaving stays on a key. */
-bool menus_coop_leave(void) {
-    if (!menus_enabled() || !coop_native_pause(screens_current()) || g_curtain) {
-        return false;
-    }
-    input_tap(671, 475);
-    return true;
 }
