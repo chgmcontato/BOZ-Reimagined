@@ -115,6 +115,8 @@ tar xzf codboz-pc-linux-x86_64.tar.gz && ./codboz-pc/codboz-pc
 
 Dados e saves ficam na pasta `game/`, ao lado do executável.
 
+**Atualizações:** a partir da versão seguinte à v0.5.1, o launcher se atualiza sozinho. Quando sai uma release nova, ele baixa, confere com o `SHA256SUMS.txt` da release, troca o executável e reinicia; a pasta `game/` (dados, saves, configurações) não é tocada. Para desligar: **Configurações → Atualizar automaticamente**. No Linux ele usa o comando `curl`. A v0.5.1 e as anteriores não têm o atualizador, então a próxima versão precisa ser baixada à mão uma vez.
+
 ### 🖥️ PC: compilar o código
 
 ```bash
@@ -127,8 +129,15 @@ make CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/caminho/do/boost/include
 
 # .exe de Windows, compilado a partir do Linux com MinGW-w64
 make win-deps
-make PLATFORM=windows win-dist      # → build-win/codboz-pc-windows.zip
+make PLATFORM=windows all
+
+# Pacotes de release. VERSION é a tag sem o "v"; só builds com VERSION se atualizam
+# sozinhos (um `make` simples é uma versão "dev" e nunca se substitui).
+make VERSION=0.5.2 linux-dist                   # → build/codboz-pc-linux-x86_64.tar.gz
+make PLATFORM=windows VERSION=0.5.2 win-dist    # → build-win/codboz-pc-windows-x64.zip
 ```
+
+Publique os dois pacotes na release `v<VERSION>` junto com o `SHA256SUMS.txt` (`sha256sum *.zip *.tar.gz *.xdelta > SHA256SUMS.txt`). O atualizador (`src/updater.c`) procura exatamente esses três nomes de arquivo.
 
 ### 📺 Android TV
 

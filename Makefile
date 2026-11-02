@@ -15,12 +15,16 @@ TARGET ?= $(BUILD_DIR)/codboz-pc.exe
 endif
 BUILD_DIR ?= build
 TARGET ?= $(BUILD_DIR)/codboz-pc
+# Release version, e.g. `make VERSION=0.5.2` (the tag is v0.5.2). Only builds made with a
+# VERSION update themselves from GitHub releases (src/updater.c); without it the build is
+# "dev" and never replaces itself.
+VERSION ?=
 
 ifeq ($(PLATFORM),windows)
 SDL_CFLAGS := -I$(WIN_SDL)/include/SDL2 -I$(WIN_SDL)/include
 SDL_LIBS := -L$(WIN_SDL)/lib -lmingw32 -lSDL2main -lSDL2 -lopengl32 -lws2_32 -liphlpapi \
   -lcomdlg32 -lole32 -loleaut32 -lshell32 -lsetupapi -limm32 -lversion -lwinmm -lgdi32 \
-  -luuid -lcfgmgr32 -mwindows
+  -luuid -lcfgmgr32 -lwinhttp -mwindows
 else
 SDL_CFLAGS := $(shell $(PKG_CONFIG) --cflags sdl2)
 SDL_LIBS := $(shell $(PKG_CONFIG) --libs sdl2)
@@ -67,6 +71,7 @@ SRC := \
   src/socket.c \
   src/timer.c \
   src/ui.c \
+  src/updater.c \
   src/zeroconf.c \
   src/zeroconf_platform_posix.c \
   src/coop_stats.c \
@@ -110,6 +115,13 @@ $(BUILD_DIR)/%.o: %.c src/*.h
 	@mkdir -p $(dir $@)
 	$(CC) $(PROJECT_CFLAGS) $(CFLAGS) $(SDL_CFLAGS) -c $< -o $@
 
+# The version is compiled into updater.o only; the stamp rebuilds it when VERSION changes.
+$(BUILD_DIR)/version.stamp: FORCE
+	@mkdir -p $(dir $@)
+	@echo '$(VERSION)' | cmp -s - $@ || echo '$(VERSION)' > $@
+$(BUILD_DIR)/src/updater.o: $(BUILD_DIR)/version.stamp
+$(BUILD_DIR)/src/updater.o: PROJECT_CFLAGS += -DCODBOZ_VERSION='"$(VERSION)"'
+
 $(BUILD_DIR)/third_party/%.o: third_party/%.c
 	@mkdir -p $(dir $@)
 	$(CC) -std=gnu11 -O2 -D_7ZIP_ST -c $< -o $@
@@ -125,13 +137,25 @@ win-deps:
 	  https://github.com/libsdl-org/SDL/releases/download/release-$(or $(SDL_VERSION),2.30.12)/SDL2-devel-$(or $(SDL_VERSION),2.30.12)-mingw.tar.gz
 	tar -C build-win/deps -xzf build-win/deps/sdl2.tar.gz
 
+# Release archives. Their names and layout are what the updater downloads and unpacks, so
+# keep them: codboz-pc-windows-x64.zip with codboz-pc.exe, codboz-pc-linux-x86_64.tar.gz
+# with codboz-pc/codboz-pc, plus SHA256SUMS.txt (sha256sum format) in the same release.
+check-version:
+	@case '$(VERSION)' in [0-9]*.[0-9]*) ;; *) echo "make: release builds need VERSION=x.y.z (the release tag without the v)" >&2; exit 1;; esac
+
 # A folder to zip and hand out: the stripped .exe (SDL2 is linked in statically).
-win-dist: all
+win-dist: check-version all
 	mkdir -p $(BUILD_DIR)/dist
 	x86_64-w64-mingw32-strip -o $(BUILD_DIR)/dist/codboz-pc.exe $(TARGET)
-	cd $(BUILD_DIR)/dist && rm -f ../codboz-pc-windows.zip && zip -q ../codboz-pc-windows.zip codboz-pc.exe
+	cd $(BUILD_DIR)/dist && rm -f ../codboz-pc-windows-x64.zip && zip -q ../codboz-pc-windows-x64.zip codboz-pc.exe
 
-.PHONY: all clean win-deps win-dist
+linux-dist: check-version all
+	rm -rf $(BUILD_DIR)/dist && mkdir -p $(BUILD_DIR)/dist/codboz-pc
+	strip -o $(BUILD_DIR)/dist/codboz-pc/codboz-pc $(TARGET)
+	tar -C $(BUILD_DIR)/dist -czf $(BUILD_DIR)/codboz-pc-linux-x86_64.tar.gz codboz-pc
+
+FORCE:
+.PHONY: all clean win-deps win-dist linux-dist check-version FORCE
 
 # Only compiled files: $(BUILD_DIR)/game holds the installed game data and saves.
 clean:
