@@ -104,7 +104,7 @@ Jogue no **PC (Linux e Windows)** ou na **Android TV**, juntos no co-op, a parti
 
 1. Baixe em [**Releases**](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest):
    - **Windows 10/11:** `codboz-pc-windows-x64.zip` (um `.exe`, sem DLLs extras)
-   - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (precisa do SDL2 e da glibc 2.39+)
+   - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (precisa do SDL2 e da glibc 2.38+)
 2. Abra. No launcher: **Install APK** (ou **Install IPA**) → **Choose** (Game data, o OBB) → **PLAY**. O launcher abre em inglês; troque para português em **Settings**.
 
 ```bash
