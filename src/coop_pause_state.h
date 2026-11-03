@@ -19,4 +19,16 @@ static bool coop_pause_update(struct coop_pause_state *s,bool active,uint32_t se
  s->waiting=s->baseline>=2 && peers<s->baseline;
  return s->waiting;
 }
+/*
+ * What the pause card shows. network+0x64 counts connections and can include stale ones (4 for two
+ * real players after a re-join), so only its drop is reliable: the party comes from real players.
+ * Same formula as the TV (Hud.java). `waiting` above is deliberately not derived from real players:
+ * a returning player connects before the remote-player map has them, so it could never resume.
+ */
+static void coop_pause_card(const struct coop_pause_state *s,int party,int *present,int *expected) {
+ int e=party<2?2:party>4?4:party, gone=s->baseline-s->peers;
+ if(gone<1)gone=1;
+ *expected=e;
+ *present=e-gone<1?1:e-gone;
+}
 #endif

@@ -28,6 +28,12 @@ int main(void) {
  /* solo: one player never waits */
  PUT(state+0x50,0);PUT(net+0x64,1);sync_coop_pause(true);assert(!g_coop_pause.waiting&&rd(state+0x50)==0);sync_coop_pause(false);
  /* unit: start window, late joiner, late first party, new session */
+ /* the card after a re-join: 4 connections, 2 real players, the partner drops -> 1/2, not 3/4 */
+ {struct coop_pause_state c={.baseline=4,.peers=3};int p,e;
+  coop_pause_card(&c,2,&p,&e);assert(p==1&&e==2);
+  c=(struct coop_pause_state){.baseline=2,.peers=1};coop_pause_card(&c,2,&p,&e);assert(p==1&&e==2);
+  c=(struct coop_pause_state){.baseline=4,.peers=3};coop_pause_card(&c,4,&p,&e);assert(p==3&&e==4);
+  c=(struct coop_pause_state){.baseline=2,.peers=0};coop_pause_card(&c,0,&p,&e);assert(p==1&&e==2);}
  {struct coop_pause_state c={0};
   coop_pause_update(&c,true,7,1,1000);assert(c.baseline==1&&!c.waiting);
   coop_pause_update(&c,true,7,3,2000);assert(c.baseline==3);

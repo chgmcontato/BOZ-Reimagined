@@ -115,6 +115,21 @@ static void sync_coop_pause(bool active) {
             last_wave=snap.wave;last_peers=peers;last_sub=sub;last_rejoin=rejoin;
         }
     }
+    /* a rise the zcount log doesn't explain means the count came from elsewhere (the host, a re-join) */
+    if(active && state) {
+        static uint32_t last_state;
+        static int last_zombies;
+        struct round_snapshot snap;
+        round_snapshot(&snap);
+        if(state==last_state && snap.zombies>last_zombies)
+            log_info("zombies: counter rose %d -> %d (wave %d, killed %d, peers %d, remotes %d, party %d)",
+                     last_zombies,snap.zombies,snap.wave,snap.killed,g_coop_pause.peers,sb_remote_count(),g_party);
+        else if(state!=last_state && snap.zombies)
+            log_info("zombies: new session starts with counter %d (wave %d, killed %d, peers %d, remotes %d, party %d)",
+                     snap.zombies,snap.wave,snap.killed,g_coop_pause.peers,sb_remote_count(),g_party);
+        last_state=state;
+        last_zombies=snap.zombies;
+    }
     if(before!=waiting) {
         static struct round_snapshot at_pause;
         struct round_snapshot now;
@@ -279,11 +294,15 @@ static void zcount_thunk(void) {
     /* solo is always 1: the network object keeps the previous co-op party size */
     int round = (int)arg(1), players = screens_coop_session() ? party_size() : 1;
     int count = reimagined_zombie_count(round, players);
-    static int last_round = -1, last_players = -1;
-    if (round != last_round || players != last_players) {
+    static int last_round = -1, last_players = -1, last_remotes = -1, last_party = -1;
+    int remotes = sb_remote_count();
+    if (round != last_round || players != last_players || remotes != last_remotes || g_party != last_party) {
         last_round = round;
         last_players = players;
-        log_info("zombies: round %d, %d player(s) -> %d", round, players, count);
+        last_remotes = remotes;
+        last_party = g_party;
+        log_info("zombies: round %d, %d player(s) -> %d (remotes %d, party %d, coop %d)", round, players, count,
+                 remotes, g_party, screens_coop_session());
     }
     ret((uint32_t)count);
 }
@@ -581,11 +600,8 @@ static void draw_coop_pause(void) {
     ui_label(dots[(now / 400) % 4], end, y + 138, 24, paper, UI_LEFT);
 
     char line[96];
-    int expected = g_coop_pause.baseline >= 2 ? g_coop_pause.baseline : 2;
-    int present = g_coop_pause.peers < 1 ? 1 : g_coop_pause.peers;
-    if (present >= expected) {
-        present = expected - 1;
-    }
+    int expected, present;
+    coop_pause_card(&g_coop_pause, g_party, &present, &expected);
     snprintf(line, sizeof(line), "PLAYERS %d / %d", present, expected);
     ui_font(UI_FONT_BODY);
     ui_label(line, 640, y + 182, 22, 0xfff5c518u, UI_CENTER);
