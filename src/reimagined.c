@@ -46,6 +46,7 @@ static uint32_t rd(uint32_t addr) {
     return *(volatile uint32_t *)G2H(addr);
 }
 
+static int sb_remote_count(void);
 static struct coop_pause_state g_coop_pause;
 static int g_party; /* most players seen in this match (connections can include stale entries) */
 static uint32_t g_owned_pause;
@@ -99,6 +100,20 @@ static void sync_coop_pause(bool active) {
         if(state==g_owned_pause && (rd(state+0x50)&255u)==1)
             *(volatile uint8_t *)G2H(state+0x50)=0;
         g_owned_pause=0;
+    }
+    /* every change a reconnection test needs to compare: round, party and this player's game state */
+    if(active && state) {
+        static int last_wave=-1,last_peers=-1,last_sub=-1,last_rejoin=-1;
+        struct round_snapshot snap;
+        round_snapshot(&snap);
+        uint32_t level=rd(IMG(0x4958d0));
+        int sub=(int)rd(state+0x10),rejoin=level?(int)(rd(level+0x208)>>8&0xffu):-1,peers=g_coop_pause.peers;
+        if(snap.wave!=last_wave||peers!=last_peers||sub!=last_sub||rejoin!=last_rejoin) {
+            log_info("coop state: peers %d of %d, remotes %d, ingame state %d, rejoined level %d, waiting %d",
+                     peers,g_coop_pause.baseline,sb_remote_count(),sub,rejoin,g_coop_pause.waiting);
+            round_log(snap.wave!=last_wave?"wave change":"event",&snap);
+            last_wave=snap.wave;last_peers=peers;last_sub=sub;last_rejoin=rejoin;
+        }
     }
     if(before!=waiting) {
         static struct round_snapshot at_pause;
