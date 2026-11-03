@@ -6,8 +6,8 @@
 #include <stdint.h>
 
 /*
- * Guest memory is mapped at the same numeric address in the host process and in
- * the JIT, so a 32-bit guest pointer can be dereferenced directly by host code.
+ * Guest memory layout. Host code turns a guest address into a host pointer with G2H (below):
+ * on the PC the two are the same number, on Android they differ by a fixed base.
  */
 enum {
     GUEST_STACK_BASE = 0x40000000u,
@@ -40,6 +40,36 @@ struct perf_counters {
 };
 extern struct perf_counters g_perf;
 
+/*
+ * Guest <-> host address translation.
+ *
+ * PC (default): identity. The guest's 32-bit address is the host address (the regions above are
+ * mapped at those exact addresses and the executable is linked -no-pie).
+ *
+ * CODBOZ_GUEST_BASE (Android ARM64): the low 4 GiB of an Android process are not ours (ART keeps
+ * its heap and boot image there), so the guest space is one 4 GiB host reservation starting at
+ * g_guest_base and a guest address is an offset into it.
+ *
+ * Nothing is mapped below GUEST_LOWEST_ADDR in either mode. Values under it are NULL or GL buffer
+ * offsets (glVertexAttribPointer/glDrawElements with a bound buffer) and pass through unchanged,
+ * exactly as the identity map treats them.
+ */
+enum { GUEST_LOWEST_ADDR = GUEST_STACK_BASE };
+
+#ifdef CODBOZ_GUEST_BASE
+extern uint8_t *g_guest_base;
+
+static inline void *G2H(uint32_t addr) {
+    return addr < GUEST_LOWEST_ADDR ? (void *)(uintptr_t)addr : (void *)(g_guest_base + addr);
+}
+
+/* 0 for NULL and for host pointers outside the guest space (a bug on this path: on the PC such a
+ * pointer would only work by the accident of -no-pie). */
+static inline uint32_t H2G(const void *ptr) {
+    uintptr_t offset = (uintptr_t)ptr - (uintptr_t)g_guest_base;
+    return ptr && offset >= GUEST_LOWEST_ADDR && offset <= 0xffffffffu ? (uint32_t)offset : 0u;
+}
+#else
 static inline void *G2H(uint32_t addr) {
     return (void *)(uintptr_t)addr;
 }
@@ -47,6 +77,7 @@ static inline void *G2H(uint32_t addr) {
 static inline uint32_t H2G(const void *ptr) {
     return (uint32_t)(uintptr_t)ptr;
 }
+#endif
 
 bool emu_init(void);
 void emu_shutdown(void);

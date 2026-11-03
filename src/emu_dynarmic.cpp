@@ -6,6 +6,10 @@
 // Unicorn's UC_HOOK_MEM_UNMAPPED. CODBOZ_DYN_FASTMEM=1 instead points fastmem at host address 0
 // (guest VA == host VA): faster, but the guest can then touch any low host page.
 //
+// CODBOZ_GUEST_BASE (Android): the same layout lives inside one 4 GiB reservation at
+// g_guest_base (see G2H in emu.h). emu_map_identity then maps G2H(addr), still one page-table
+// entry per page, and fastmem points at g_guest_base instead of 0.
+//
 // Imports: thunk `svc #index; bx lr` -> CallSVC(index) -> g_thunks[index].fn(), as in hook_intr.
 //
 // Nested guest calls (imports calling guest callbacks): Jit::Run is not reentrant, so each nesting
@@ -358,9 +362,18 @@ Env &env_at(int level) {
         cfg.absolute_offset_page_table = false; // host = page_table[va >> 12] + (va & 0xfff)
         if (const char *fm = std::getenv("CODBOZ_DYN_FASTMEM");
             fm && std::strcmp(fm, "1") == 0 && !g_code_watch)
+#ifdef CODBOZ_GUEST_BASE
+            cfg.fastmem_pointer = reinterpret_cast<std::uintptr_t>(g_guest_base);
+#else
             cfg.fastmem_pointer = 0;
+#endif
         cfg.enable_cycle_counting = false; // run until halted
+#if defined(__aarch64__)
+        // The arm64 backend asserts code_cache_size <= 128 MiB (the reach of its branches).
+        cfg.code_cache_size = level == 0 ? 128u << 20 : 32u << 20;
+#else
         cfg.code_cache_size = level == 0 ? 256u << 20 : 32u << 20;
+#endif
         env->jit = std::make_unique<Dynarmic::A32::Jit>(cfg);
         if (level == 0) {
             log_info("dynarmic: A32 JIT, %s%s", cfg.fastmem_pointer ? "fastmem (identity)" : "page table",
@@ -397,6 +410,9 @@ bool run_until_return(Env &env, uint32_t pc) {
 
 extern "C" {
 struct perf_counters g_perf;
+#ifdef CODBOZ_GUEST_BASE
+uint8_t *g_guest_base;
+#endif
 }
 
 extern "C" bool emu_map_identity(uint32_t addr, uint32_t size) {
@@ -415,6 +431,25 @@ extern "C" bool emu_map_identity(uint32_t addr, uint32_t size) {
                           (unsigned long)info.State);
             at = (uint64_t)(uintptr_t)info.BaseAddress + info.RegionSize;
         }
+        return false;
+    }
+#elif defined(CODBOZ_GUEST_BASE)
+    // Inside our own PROT_NONE reservation, so MAP_FIXED cannot clobber anything else; the
+    // page table says whether the range is already in use (MAP_FIXED_NOREPLACE's job on the PC).
+    if (!g_guest_base || addr < GUEST_LOWEST_ADDR || size > 0x100000000ull - addr) {
+        log_error("guest range 0x%08x+0x%x is outside the guest space", addr, size);
+        return false;
+    }
+    for (uint32_t off = 0; g_mapped && off < size; off += 0x1000u) {
+        if ((*g_mapped)[(addr + off) >> 12]) {
+            log_error("guest range 0x%08x+0x%x is already mapped", addr, size);
+            return false;
+        }
+    }
+    void *p = mmap(G2H(addr), size, PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0);
+    if (p == MAP_FAILED || p != G2H(addr)) {
+        log_error("unable to map guest range 0x%08x+0x%x at %p", addr, size, G2H(addr));
         return false;
     }
 #else
@@ -454,6 +489,19 @@ extern "C" bool emu_init(void) {
         g_code_watch = true;
         g_code_page.assign(UserConfig::NUM_PAGE_TABLE_ENTRIES, 0);
     }
+#ifdef CODBOZ_GUEST_BASE
+    if (!g_guest_base) {
+        // Address space only: pages are committed when the guest regions are mapped below.
+        void *base = mmap(nullptr, 0x100000000ull, PROT_NONE,
+                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+        if (base == MAP_FAILED) {
+            log_error("unable to reserve the 4 GiB guest address space");
+            return false;
+        }
+        g_guest_base = static_cast<uint8_t *>(base);
+        log_info("guest address space at %p (guest 0x00000000 = host %p)", base, base);
+    }
+#endif
     if (!emu_map_identity(GUEST_STACK_BASE, GUEST_STACK_SIZE) ||
         !emu_map_identity(GUEST_ARENA_BASE, GUEST_ARENA_SIZE) ||
         !emu_map_identity(GUEST_THUNK_BASE, GUEST_THUNK_SIZE) ||
