@@ -45,7 +45,7 @@ enum {
 #define C_OK 0xff6fdc9cu
 #define C_BAD 0xffff7a6bu
 
-enum page { PAGE_PLAY, PAGE_SETTINGS, PAGE_CONTROLS, PAGE_COUNT, PAGE_START = 100 };
+enum page { PAGE_PLAY, PAGE_VERSIONS, PAGE_SETTINGS, PAGE_CONTROLS, PAGE_COUNT, PAGE_START = 100 };
 
 static enum page g_page;
 static enum game_mode g_mode;
@@ -55,6 +55,8 @@ static bool g_message_bad;
 static bool g_editing_name;
 static char g_name[16];
 static int g_capture_action = -1, g_capture_slot;
+/* art from the Reimagined install; every use tolerates a missing file */
+static struct ui_image g_art_mode[MODE_COUNT], g_art_paper;
 
 /* input state for the immediate-mode widgets */
 static float g_mx, g_my;
@@ -198,7 +200,7 @@ static void label(const char *text, float x, float baseline, float size, uint32_
     ui_label(text, x, baseline, size, color, align);
 }
 
-enum icon { ICON_PLAY, ICON_SLIDERS, ICON_PAD, ICON_PENCIL, ICON_CHECK, ICON_ALERT };
+enum icon { ICON_PLAY, ICON_BOX, ICON_SLIDERS, ICON_PAD, ICON_PENCIL, ICON_CHECK, ICON_ALERT };
 
 static void icon(enum icon kind, float x, float y, float s, uint32_t c) {
     float t = s * 0.12f;
@@ -206,6 +208,11 @@ static void icon(enum icon kind, float x, float y, float s, uint32_t c) {
     case ICON_PLAY:
         ui_triangle(x + s * 0.25f, y + s * 0.15f, x + s * 0.85f, y + s * 0.5f, x + s * 0.25f,
                     y + s * 0.85f, c);
+        break;
+    case ICON_BOX:
+        ui_frame(x + s * 0.1f, y + s * 0.3f, s * 0.8f, s * 0.6f, t, c);
+        ui_quad((const float[8]){x + s * 0.1f, y + s * 0.3f, x + s * 0.28f, y + s * 0.1f, x + s * 0.72f, y + s * 0.1f, x + s * 0.9f, y + s * 0.3f}, c);
+        ui_rect(x + s * 0.42f, y + s * 0.3f, s * 0.16f, s * 0.2f, C_RAIL);
         break;
     case ICON_SLIDERS:
         for (int i = 0; i < 3; ++i) {
@@ -303,6 +310,38 @@ static void row(float y, const char *name, const char *hint) {
     ui_rect(RAIL_W + 40, y + 47, REF_W - RAIL_W - 80, 1, C_LINE);
 }
 
+/* Fills the box exactly, cropping the image's overflow. */
+static void art_cover(const struct ui_image *im, float x, float y, float w, float h, float alpha) {
+    float ia = (float)im->w / (float)im->h, ba = w / h, du = 0, dv = 0;
+    if (ia > ba) {
+        du = (1 - ba / ia) / 2;
+    } else {
+        dv = (1 - ia / ba) / 2;
+    }
+    ui_image_part(im, x, y, w, h, du, dv, 1 - du, 1 - dv, alpha);
+}
+
+/* A slanted strip of comic paper with an inked title, as on the game's menus. */
+static void banner(const char *text, float x, float y, float size) {
+    ui_font(UI_FONT_DISPLAY);
+    float w = ui_text_width(text, size) + 34, h = size + 16;
+    const float ink[8] = {x - 3, y + 5, x + w + 5, y - 5, x + w + 1, y + h + 3, x + 1, y + h + 7};
+    const float paper[8] = {x, y + 6, x + w, y - 2, x + w - 3, y + h, x + 3, y + h + 4};
+    ui_quad(ink, 0xff0b0908u);
+    ui_quad(paper, C_SNOW);
+    ui_rotate_begin(x + w / 2, y + h / 2, -0.7f);
+    ui_font(UI_FONT_DISPLAY);
+    ui_label(text, x + 17, y + h / 2 + size * 0.37f + 1, size, 0xff151211u, UI_LEFT);
+    ui_rotate_end();
+}
+
+/* An inked comic panel: slightly uneven corners and a light keyline. */
+static void panel(float x, float y, float w, float h, uint32_t fill) {
+    const float pts[8] = {x + 3, y, x + w, y + 3, x + w - 3, y + h, x, y + h - 3};
+    ui_quad(pts, fill);
+    ui_quad_outline(pts, 1.5f, 0x66d5c9acu);
+}
+
 /* ---- rail ---- */
 
 static void write_name(void) {
@@ -331,31 +370,38 @@ static void stop_editing(void) {
 
 static void draw_rail(void) {
     ui_rect(0, 0, RAIL_W, REF_H, C_RAIL);
+    if (g_art_paper.tex) {
+        art_cover(&g_art_paper, 0, 0, RAIL_W, 124, 0.13f);
+    }
+    ui_rect(RAIL_W - 3, 0, 3, REF_H, C_ACCENT);
     ui_font(UI_FONT_DISPLAY);
-    ui_label("BLACK OPS", 26, 58, 30, C_SNOW, UI_LEFT);
-    ui_label("ZOMBIES", 26, 88, 30, C_ACCENT_HI, UI_LEFT);
+    ui_text("BLACK OPS", 22, 56, 31, C_SNOW, UI_LEFT);
+    ui_font(UI_FONT_DISPLAY);
+    ui_text("ZOMBIES", 22, 90, 36, C_ACCENT_HI, UI_LEFT);
     char version[48];
     snprintf(version, sizeof(version), strcmp(updater_version(), "dev") == 0 ? "PC  ·  %s" : "PC  ·  v%s",
              updater_version());
-    label(version, 28, 110, 12, C_DIM, UI_LEFT);
+    label(version, 24, 112, 12, C_DIM, UI_LEFT);
 
-    const char *const names[PAGE_COUNT] = {TR("Jogar", "Play"), TR("Configurações", "Settings"),
-                                           TR("Controles", "Controls")};
-    static const enum icon icons[PAGE_COUNT] = {ICON_PLAY, ICON_SLIDERS, ICON_PAD};
+    const char *const names[PAGE_COUNT] = {TR("Jogar", "Play"), TR("Versões", "Versions"),
+                                           TR("Configurações", "Settings"), TR("Controles", "Controls")};
+    static const enum icon icons[PAGE_COUNT] = {ICON_PLAY, ICON_BOX, ICON_SLIDERS, ICON_PAD};
     for (int i = 0; i < PAGE_COUNT; ++i) {
-        float y = 140 + (float)i * 44;
-        bool focused = focusable(12, y, RAIL_W - 24, 40);
+        float y = 136 + (float)i * 46;
+        bool focused = focusable(10, y, RAIL_W - 23, 42);
         bool on = g_page == (enum page)i;
         if (on) {
-            ui_round_rect(12, y, RAIL_W - 24, 40, 8, C_RAISE);
-        } else if (hovered(12, y, RAIL_W - 24, 40)) {
-            ui_round_rect(12, y, RAIL_W - 24, 40, 8, 0x0affffffu);
+            const float tab[8] = {10, y + 1, RAIL_W - 3, y - 2, RAIL_W - 3, y + 43, 12, y + 41};
+            ui_quad(tab, C_ACCENT);
+        } else if (hovered(10, y, RAIL_W - 23, 42)) {
+            ui_round_rect(10, y, RAIL_W - 23, 42, 4, 0x14ffffffu);
         }
-        icon(icons[i], 26, y + 11, 18, on ? C_ACCENT_HI : C_SAND);
-        label(names[i], 56, y + 26, 15, on ? C_SNOW : C_SAND, UI_LEFT);
-        if (pressed(focused, 12, y, RAIL_W - 24, 40)) {
+        icon(icons[i], 24, y + 12, 18, on ? C_SNOW : C_SAND);
+        label(names[i], 54, y + 27, 15, on ? C_SNOW : C_SAND, UI_LEFT);
+        if (pressed(focused, 10, y, RAIL_W - 23, 42)) {
             stop_editing();
             g_page = (enum page)i;
+            g_message[0] = 0;
         }
     }
 
@@ -411,73 +457,112 @@ static void choose_obb(void) {
     }
 }
 
-static void status_row(float y, bool ok, const char *name, const char *detail, const char *action,
-                       void (*fn)(void)) {
-    icon(ok ? ICON_CHECK : ICON_ALERT, RAIL_W + 40, y + 10, 18, ok ? C_OK : C_GOLD);
-    label(name, RAIL_W + 70, y + 22, 15, C_SNOW, UI_LEFT);
-    label(detail, RAIL_W + 70, y + 40, 12, C_DIM, UI_LEFT);
-    if (button(REF_W - 40 - 150, y + 8, 150, 34, action, false, true)) {
-        fn();
+static const char *mode_name(enum game_mode mode) {
+    return mode == MODE_REIMAGINED ? "Reimagined" : mode == MODE_IOS ? "iOS" : "Original";
+}
+
+static const char *mode_summary(enum game_mode mode) {
+    return mode == MODE_REIMAGINED ? TR("Versão da TV: ritmo e drops do BO1, HUD novo e menus redesenhados.",
+                                        "TV version: BO1 pace and drops, new HUD and redesigned menus.")
+           : mode == MODE_IOS      ? TR("Versão 1.3.5 do iPhone, sem mudanças. Usa os dados do IPA.",
+                                        "iPhone version 1.3.5, unchanged. Uses the data from the IPA.")
+                                   : TR("O jogo do celular 1.0.11, sem mudanças.", "The phone game 1.0.11, unchanged.");
+}
+
+static const char *mode_coop(enum game_mode mode) {
+    return mode == MODE_REIMAGINED ? TR("Co-op com a TV", "Co-op with the TV")
+           : mode == MODE_IOS      ? TR("Co-op com o iOS 1.3.5", "Co-op with iOS 1.3.5")
+                                   : TR("Co-op com o celular", "Co-op with phones");
+}
+
+/* The art of a mode, darkened from the bottom so text sits on it. */
+static void mode_art(enum game_mode mode, float x, float y, float w, float h) {
+    if (g_art_mode[mode].tex) {
+        art_cover(&g_art_mode[mode], x, y, w, h, 1);
+    } else {
+        ui_rect(x, y, w, h, C_RAISE);
     }
-    ui_rect(RAIL_W + 40, y + 52, REF_W - RAIL_W - 80, 1, C_LINE);
+    for (int i = 0; i < 12; ++i) {
+        float band = h * 0.55f / 12;
+        ui_rect(x, y + h * 0.45f + band * (float)i, w, band + 1, (uint32_t)(18 * (i + 1)) << 24 | 0x00120e0du);
+    }
 }
 
 static void draw_play(void) {
-    float x = RAIL_W + 40;
-    bool installed = install_present(g_data_root, g_mode);
-    ui_font(UI_FONT_DISPLAY);
-    ui_label(installed && data_ok() ? TR("Pronto para jogar", "Ready to play") : TR("Vamos preparar o jogo", "Let's set up the game"), x, 72, 30,
-             C_SNOW, UI_LEFT);
-    label(g_mode == MODE_REIMAGINED ? TR("Reimagined  ·  versão da TV  ·  co-op com a TV", "Reimagined  ·  TV version  ·  co-op with the TV")
-          : g_mode == MODE_IOS      ? TR("iOS  ·  versão 1.3.5 do iPhone  ·  dados do próprio IPA", "iOS  ·  iPhone version 1.3.5  ·  data from the IPA itself")
-                                    : TR("Original  ·  versão do celular  ·  co-op com o celular", "Original  ·  phone version  ·  co-op with phones"),
-          x, 98, 13, C_SAND, UI_LEFT);
+    float x = RAIL_W, w = REF_W - RAIL_W, pad = 32;
+    bool installed = install_present(g_data_root, g_mode), ready = installed && data_ok();
+    mode_art(g_mode, x, 0, w, REF_H - FOOT_H);
+    banner(ready ? TR("PRONTO PARA JOGAR", "READY TO PLAY") : TR("VAMOS PREPARAR O JOGO", "LET'S SET UP THE GAME"), x + pad, 30, 28);
 
-    static const char *const modes[] = {"Original", "Reimagined", "iOS"};
-    int mode = segmented(x, 122, 420, 38, modes, 3, (int)g_mode);
-    if (mode != (int)g_mode) {
-        g_mode = (enum game_mode)mode;
+    float py = REF_H - FOOT_H - 132, pw = w - pad * 2;
+    panel(x + pad, py, pw, 112, 0xe6120e0du);
+    label(TR("VERSÃO ATIVA", "ACTIVE VERSION"), x + pad + 20, py + 26, 12, C_GOLD, UI_LEFT);
+    ui_font(UI_FONT_DISPLAY);
+    ui_label(mode_name(g_mode), x + pad + 20, py + 60, 30, C_SNOW, UI_LEFT);
+    label(mode_summary(g_mode), x + pad + 20, py + 82, 13, C_SAND, UI_LEFT);
+    label(mode_coop(g_mode), x + pad + 20, py + 101, 12, C_DIM, UI_LEFT);
+    if (button(x + w - pad - 178, py + 16, 160, 36, ready ? TR("Trocar versão", "Change version") : TR("Preparar", "Set up"), !ready, true)) {
+        g_page = PAGE_VERSIONS;
+        g_message[0] = 0;
+    }
+}
+
+/* One card per game version: art, status, use and install. */
+static void version_card(enum game_mode mode, float x, float y, float w, float h) {
+    bool installed = install_present(g_data_root, mode), active = g_mode == mode;
+    panel(x, y, w, h, active ? 0xff2b1a1au : C_RAIL);
+    mode_art(mode, x + 6, y + 6, w - 12, 104);
+    ui_font(UI_FONT_DISPLAY);
+    ui_text(mode_name(mode), x + 16, y + 100, 26, C_SNOW, UI_LEFT);
+    if (active) {
+        const float tag[8] = {x + w - 74, y + 12, x + w - 12, y + 10, x + w - 12, y + 32, x + w - 76, y + 34};
+        ui_quad(tag, C_ACCENT);
+        label(TR("ATIVA", "ACTIVE"), x + w - 43, y + 27, 12, C_SNOW, UI_CENTER);
+    }
+    icon(installed ? ICON_CHECK : ICON_ALERT, x + 14, y + 122, 15, installed ? C_OK : C_GOLD);
+    label(installed ? TR("Instalada", "Installed") : TR("Não instalada", "Not installed"), x + 36, y + 135, 13, installed ? C_OK : C_GOLD, UI_LEFT);
+    label(mode == MODE_REIMAGINED ? TR("Arquivo: BOZ-TV.apk", "File: BOZ-TV.apk")
+          : mode == MODE_IOS      ? TR("Arquivo: IPA 1.3.5", "File: IPA 1.3.5")
+                                  : TR("Arquivo: APK 1.0.11", "File: APK 1.0.11"),
+          x + 14, y + 158, 12, C_SAND, UI_LEFT);
+    label(mode_coop(mode), x + 14, y + 176, 12, C_DIM, UI_LEFT);
+    float bx = x + 12, bw = w - 24;
+    if (button(bx, y + h - 92, bw, 36, active ? TR("Em uso", "In use") : TR("Usar esta", "Use this"), !active && installed, !active && installed)) {
+        g_mode = mode;
         save_cfg();
         g_message[0] = 0;
     }
-    label(g_mode == MODE_REIMAGINED
-              ? TR("Ritmo de horda e drops do BO1, HUD da TV, timer da partida e perfil.", "BO1 horde pace and drops, the TV HUD, match timer and profile.")
-          : g_mode == MODE_IOS
-              ? TR("A versão do iPhone (1.3.5), sem mudanças. Co-op só com quem tem a mesma versão.", "The iPhone version (1.3.5), unchanged. Co-op only with the same version.")
-              : TR("O jogo do celular sem mudanças, para jogar com quem tem o original.", "The phone game unchanged, to play with people who have the original."),
-          x, 184, 13, C_DIM, UI_LEFT);
-
-    ui_rect(x, 204, REF_W - RAIL_W - 80, 1, C_LINE);
-    char detail[256];
-    snprintf(detail, sizeof(detail), "%s",
-             installed ? (g_mode == MODE_REIMAGINED ? TR("BOZ-TV.apk instalado", "BOZ-TV.apk installed")
-                          : g_mode == MODE_IOS      ? TR("IPA 1.3.5 instalado", "IPA 1.3.5 installed")
-                                                    : TR("APK 1.0.11 instalado", "APK 1.0.11 installed"))
-                       : (g_mode == MODE_REIMAGINED ? TR("Instale com o BOZ-TV.apk", "Install with BOZ-TV.apk")
-                          : g_mode == MODE_IOS      ? TR("Instale com o IPA do iOS", "Install with the iOS IPA")
-                                                    : TR("Instale com o APK do Android 1.0.11", "Install with the Android 1.0.11 APK")));
-    status_row(205, installed, TR("Jogo", "Game"), detail, installed ? TR("Reinstalar", "Reinstall")
-                                                       : g_mode == MODE_IOS ? TR("Instalar IPA", "Install IPA") : TR("Instalar APK", "Install APK"),
-               install_from_apk);
-    if (g_mode == MODE_IOS) {
-        icon(installed ? ICON_CHECK : ICON_ALERT, RAIL_W + 40, 268, 18, installed ? C_OK : C_GOLD);
-        label(TR("Dados do jogo", "Game data"), RAIL_W + 70, 280, 15, C_SNOW, UI_LEFT);
-        label(installed ? TR("blackops_gles1.dz, copiado do IPA", "blackops_gles1.dz, copied from the IPA")
-                        : TR("Vem junto com o IPA (não precisa de OBB)", "Comes with the IPA (no OBB needed)"),
-              RAIL_W + 70, 298, 12, C_DIM, UI_LEFT);
-        ui_rect(RAIL_W + 40, 310, REF_W - RAIL_W - 80, 1, C_LINE);
-        label(TR("No jogo, o cursor aparece sozinho nos menus. Esc pausa e libera o cursor. F11: tela cheia.", "In game the cursor shows by itself in menus. Esc pauses and frees the cursor. F11: fullscreen."), x, 350, 13,
-              C_DIM, UI_LEFT);
-        return;
+    if (button(bx, y + h - 48, bw, 36, installed ? TR("Reinstalar", "Reinstall") : TR("Instalar", "Install"), false, true)) {
+        install_from_apk();
     }
-    const char *base = strrchr(g_obb, '/');
-    snprintf(detail, sizeof(detail), "%s",
-             obb_ok() ? (base ? base + 1 : g_obb) : TR("Arquivo blackops_etc.dz (não é copiado)", "The blackops_etc.dz file (it is not copied)"));
-    status_row(258, obb_ok(), TR("Dados do jogo (OBB)", "Game data (OBB)"), detail, obb_ok() ? TR("Alterar", "Change") : TR("Selecionar", "Choose"),
-               choose_obb);
+}
 
-    label(TR("No jogo, o cursor aparece sozinho nos menus. Esc pausa e libera o cursor. F11: tela cheia.", "In game the cursor shows by itself in menus. Esc pauses and frees the cursor. F11: fullscreen."), x, 350, 13,
-          C_DIM, UI_LEFT);
+static void draw_versions(void) {
+    float x = RAIL_W + 24, w = REF_W - RAIL_W - 48;
+    if (g_art_mode[MODE_ORIGINAL].tex) {
+        art_cover(&g_art_mode[MODE_ORIGINAL], RAIL_W, 0, REF_W - RAIL_W, REF_H, 0.16f);
+    }
+    banner(TR("VERSÕES DO JOGO", "GAME VERSIONS"), x, 22, 26);
+    label(TR("Escolha a versão ativa. O arquivo é reconhecido sozinho ao instalar.", "Choose the active version. The file is recognised when you install it."),
+          x + 2, 88, 13, C_SAND, UI_LEFT);
+    float gap = 12, cw = (w - gap * 2) / 3;
+    for (int m = 0; m < MODE_COUNT; ++m) {
+        version_card((enum game_mode)m, x + (cw + gap) * (float)m, 100, cw, 312);
+    }
+    /* the shared data file: Original and Reimagined read it, iOS has its own */
+    float y = 422;
+    panel(x, y, w, 100, C_RAIL);
+    bool ok = obb_ok();
+    icon(ok ? ICON_CHECK : ICON_ALERT, x + 14, y + 16, 16, ok ? C_OK : C_GOLD);
+    label(TR("Dados do jogo (OBB)", "Game data (OBB)"), x + 40, y + 30, 15, C_SNOW, UI_LEFT);
+    const char *base = strrchr(g_obb, '/');
+    label(ok ? (base ? base + 1 : g_obb) : TR("Selecione o blackops_etc.dz. Ele não é copiado.", "Choose blackops_etc.dz. It is not copied."),
+          x + 40, y + 52, 12, C_SAND, UI_LEFT);
+    label(TR("Usado por Original e Reimagined. O iOS usa os dados do IPA.", "Used by Original and Reimagined. iOS uses the data from the IPA."),
+          x + 40, y + 74, 12, C_DIM, UI_LEFT);
+    if (button(x + w - 164, y + 30, 150, 38, ok ? TR("Alterar", "Change") : TR("Selecionar", "Choose"), false, true)) {
+        choose_obb();
+    }
 }
 
 static void draw_settings(void) {
@@ -678,10 +763,8 @@ static void draw_footer(void) {
         icon(ICON_ALERT, RAIL_W + 24, y + 23, 16, C_BAD);
         label(text, RAIL_W + 48, y + 37, 13, C_BAD, UI_LEFT);
     } else {
-        label(g_mode == MODE_REIMAGINED ? TR("Modo Reimagined", "Reimagined mode")
-              : g_mode == MODE_IOS      ? TR("Modo iOS", "iOS mode")
-                                        : TR("Modo Original", "Original mode"), RAIL_W + 24, y + 37,
-              13, C_DIM, UI_LEFT);
+        label(TR("Esc pausa e libera o cursor  ·  F11: tela cheia", "Esc pauses and frees the cursor  ·  F11: fullscreen"),
+              RAIL_W + 24, y + 37, 13, C_DIM, UI_LEFT);
     }
     if (button(REF_W - 24 - 170, y + 12, 170, 40, primary, true, true)) {
         stop_editing();
@@ -832,6 +915,18 @@ enum game_mode launcher_run(char *obb, size_t obb_size) {
     ui_load_font_slot(UI_FONT_DISPLAY, path);
     snprintf(path, sizeof(path), "%s/reimagined/assets/character-menu/carbon.ttf", g_data_root);
     ui_load_font_slot(UI_FONT_BODY, path);
+    static const char *const arts[MODE_COUNT] = {"character-menu/background.png", "branding/title-reimagined-v1.png",
+                                                 "character-menu/ascension-background.png"};
+    for (int m = 0; m < MODE_COUNT; ++m) {
+        snprintf(path, sizeof(path), "%s/reimagined/assets/%s", g_data_root, arts[m]);
+        if (!ui_image_load(&g_art_mode[m], path)) {
+            memset(&g_art_mode[m], 0, sizeof(g_art_mode[m]));
+        }
+    }
+    snprintf(path, sizeof(path), "%s/reimagined/assets/character-menu/paper.png", g_data_root);
+    if (!ui_image_load(&g_art_paper, path)) {
+        memset(&g_art_paper, 0, sizeof(g_art_paper));
+    }
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
     SDL_SetWindowFullscreen(video_window(), 0);
     SDL_SetWindowSize(video_window(), REF_W, REF_H);
@@ -885,6 +980,8 @@ enum game_mode launcher_run(char *obb, size_t obb_size) {
         draw_rail();
         if (g_page == PAGE_PLAY) {
             draw_play();
+        } else if (g_page == PAGE_VERSIONS) {
+            draw_versions();
         } else if (g_page == PAGE_SETTINGS) {
             draw_settings();
         } else if (g_page == PAGE_CONTROLS) {
@@ -901,6 +998,14 @@ enum game_mode launcher_run(char *obb, size_t obb_size) {
     }
     stop_editing();
     save_cfg();
+    for (int m = 0; m < MODE_COUNT; ++m) {
+        if (g_art_mode[m].tex) {
+            ui_image_free(&g_art_mode[m]);
+        }
+    }
+    if (g_art_paper.tex) {
+        ui_image_free(&g_art_paper);
+    }
     ui_set_reference(1280, 720);
     ui_font(UI_FONT_DISPLAY);
     SDL_SetWindowTitle(video_window(), "Call of Duty: Black Ops Zombies");

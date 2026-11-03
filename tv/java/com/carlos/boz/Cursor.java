@@ -164,7 +164,7 @@ final class Cursor {
                 Hud.setScoreboard(false);
             } else if (e.getRepeatCount() == 0) {
                 if (!m_MenuMode && Hud.scoreboardAvailable()) Hud.setScoreboard(true);
-                else setMenuMode(!m_MenuMode);
+                else { m_ModeBySelect = true; setMenuMode(!m_MenuMode); }
             }
             return true;
         }
@@ -778,9 +778,13 @@ final class Cursor {
         m_Toast.setVisibility(View.GONE);
     }
 
+    private boolean m_ModeBySelect;   // o aviso só aparece quando o jogador aperta SELECT
+
     private void showMode() {
         m_View.setVisibility(m_MenuMode ? View.VISIBLE : View.GONE);
         m_Menus.setFocusMode(m_MenuMode);
+        if (!m_ModeBySelect) { hideToast(); return; }
+        m_ModeBySelect = false;
         m_Toast.setText(m_MenuMode
                 ? "Menu: D-pad to navigate, A to select, B to go back  •  SELECT = game mode"
                 : "Game mode  •  SELECT = menu mode (pointer)");

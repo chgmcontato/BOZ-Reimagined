@@ -212,7 +212,7 @@ static float match(const struct screen *s, const int *g) {
  * and turn Esc into that page's BACK instead of pausing. */
 static bool front_end_only(const char *id) {
     static const char *const ids[] = {"title", "title_prompt", "main", "single", "newgame", "charselect",
-                                      "coop", "coopwifi", "coopmap", "cooplobby", "reconnectconfirm",
+                                      "coop", "coopwifi", "coopmap", "cooplobby", "coopvote", "reconnectconfirm",
                                       "player_profile", "extras"};
     for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
         if (strcmp(id, ids[i]) == 0) {

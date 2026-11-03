@@ -1190,7 +1190,7 @@ final class Hud {
                     m_FpsPaint.setColor(0xFFF5C518);
                     m_FpsPaint.setShadowLayer(2f, 1f, 1f, 0xC0000000);
                 }
-                c.drawText("FPS " + fps, 640, 712, m_FpsPaint);
+                if (!m_Cursor.isMenuMode()) c.drawText("FPS " + fps, 640, 712, m_FpsPaint);   // nos menus cobria o rodapé
                 c.restoreToCount(fpsSave);
             }
             c.restoreToCount(save);

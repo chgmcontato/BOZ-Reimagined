@@ -359,6 +359,8 @@ static boolean coopSession() { return s_CoopSession; }
                     && ((m_Current != null ? m_Current : m_LastKnown) == null ||
                     !s.after.contains((m_Current != null ? m_Current : m_LastKnown).id))) continue;
             float d = match(s, g);
+            // os cartões do Map Vote ficam sobre o mesmo fundo do lobby: quando aparecem, é a tela de voto
+            if ("coopvote".equals(s.id) && d < THRESHOLD) return s;
             if (d < bestD) { bestD = d; best = s; }
         }
         return best;
