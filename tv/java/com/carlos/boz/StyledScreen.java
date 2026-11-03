@@ -120,6 +120,7 @@ final class StyledScreen {
 
     /** Página inteira em Java (cobre o SWF): pode aparecer antes de o SWF chegar nela. */
     boolean isPage(String id) {
+        if ("reconnectconfirm".equals(id) && Menus.rejoinDialog()) return false;
         Style s = id != null ? style(id) : null;
         return s != null && s.page;
     }
@@ -161,7 +162,8 @@ final class StyledScreen {
         m_Id = id;
         Kit k = Kit.get(m_Context);
         k.screen = "pause".equals(id) ? "pause_solo" : id;
-        if ("pause".equals(id) && Menus.coopSession()) drawCoopBox(c, k);
+        if ("reconnectconfirm".equals(id) && Menus.rejoinDialog()) k.hint(c, Kit.HINT);
+        else if ("pause".equals(id) && Menus.coopSession()) drawCoopBox(c, k);
         else if (s.page) drawPage(c, s, k);
         else k.hint(c, s.hint);   // a tela do próprio jogo é a referência: só o rodapé comum
         c.restore();

@@ -114,6 +114,9 @@ final class Menus {
     private volatile int[] m_Px;         // última imagem em cores (2x a grade: 320x180), para achar o botão dos sliders
     private static boolean s_CoopSession;
 static boolean coopSession() { return s_CoopSession; }
+    /** A confirmação de RE-JOIN é do jogo: vinda da página Co-op, fica visível e só recebe o foco. */
+    private static volatile boolean s_RejoinDialog;
+    static boolean rejoinDialog() { return s_RejoinDialog; }
     private Screen effectiveCurrent() {
         if (s_CoopSession && m_Current != null && "pause".equals(m_Current.id))
             for (Screen s : m_Screens) if ("pausecoop".equals(s.id)) return s;
@@ -396,6 +399,10 @@ static boolean coopSession() { return s_CoopSession; }
             if (now - m_UnknownSince < 750) return;
         } else m_UnknownSince = 0;
         if (s == m_Current) return;
+        if (s != null && "reconnectconfirm".equals(s.id)) {
+            Screen from = m_Current != null ? m_Current : m_LastKnown;
+            s_RejoinDialog = from != null && "coop".equals(from.id);
+        } else if (s != null) s_RejoinDialog = false;
         if (s != null && s.id.startsWith("coop")) s_CoopSession = true;
         // só o menu principal e o Single (caminho do solo) apagam a marca: a escolha de personagem do co-op pode ser
         // reconhecida como "charselect" e apagava a marca antes da partida co-op
