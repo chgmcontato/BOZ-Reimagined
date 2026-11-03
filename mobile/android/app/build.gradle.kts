@@ -84,8 +84,8 @@ android {
         applicationId = "com.carlos.boz.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.7.0-beta.1"
+        versionCode = 4
+        versionName = "0.7.0-beta.2"
         ndk {
             abiFilters += "arm64-v8a"
         }

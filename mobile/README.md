@@ -1,13 +1,10 @@
-# BOZ Reimagined Mobile (Android ARM64): Etapa 2, prova de viabilidade
+# BOZ Reimagined Mobile (Android ARM64)
 
 O runtime do PC (`src/`) compilado para Android ARM64, rodando o **mesmo `boz.s3e` ARM32 do
-Reimagined TV** no Dynarmic. O objetivo desta etapa é chegar ao menu principal no Galaxy S24 FE.
-Menus touch, HUD de toque, controle e co-op ficam para as etapas seguintes.
+Reimagined TV** no Dynarmic. Está em pré-release: as seções abaixo guardam também o histórico de diagnóstico.
 
-> **Estado: Etapa 2 ABERTA.** No S24 FE, o primeiro APK instalou e abriu, mas os shaders falharam
-> (ver [Primeiro boot no S24 FE](#primeiro-boot-no-s24-fe)). A correção chega à partida Solo no Mesa
-> OpenGL ES, mas ainda não foi validada no aparelho. A Etapa 2 só fecha quando o S24 FE mostrar o
-> menu principal e carregar uma partida Solo real.
+> **Estado:** num Galaxy S24 FE com Android 16, o jogo abre, joga uma partida Solo e joga co-op com PC
+> e Android TV na mesma rede, em testes feitos à mão.
 
 ## Como está organizado
 
@@ -259,8 +256,6 @@ cmake --build /tmp/boz-gles && SDL_VIDEO_X11_FORCE_EGL=1 /tmp/boz-gles/boz-runti
 
 ## Problemas conhecidos e limitações desta etapa
 
-- **Não validado no aparelho.** O Mesa não é o driver do S24 FE (ANGLE + Xclipse), que pode recusar o
-  que o Mesa aceita. Nada acima prova que o jogo roda no aparelho: é o próximo passo.
 - **Controles de toque novos:** posições e sensibilidade são um primeiro ajuste, sem opção de configurar.
   O HUD nativo do jogo continua escondido pelos patches da TV.
 - **Nome do jogador:** não há tela para isso no Mobile ainda; o jogo usa o padrão do launcher.
@@ -268,21 +263,11 @@ cmake --build /tmp/boz-gles && SDL_VIDEO_X11_FORCE_EGL=1 /tmp/boz-gles/boz-runti
   ele for desinstalado.
 - **Proporção:** o modo Reimagined desenha em 16:9 com faixas pretas nas laterais (19.5:9 no S24
   FE). Áreas seguras e layout adaptado ficam para a Etapa 6.
-- **Co-op:** o multicast lock já é pedido e o ZeroConf do PC está no build, mas não foi testado
-  nada de rede. A proteção de rede local do Android 16 pode interferir (Etapa 3).
+- **Co-op:** funciona no Local Wi-Fi com PC e TV. Só foi testado no S24 FE; a proteção de rede local
+  de outros aparelhos com Android 16 pode interferir.
 - O jogo é ES 2.0 de fato: usa shaders GLSL ES 1.00 e `glUseProgram`. O número da linha "game asked
   EGL" não indica a versão (ver o primeiro boot).
 - Pré-existente no PC, não corrigido aqui: num clone novo o `make` pode regerar
   `src/gl_thunks.c` a partir de `tools/gen_gl.py`, que está defasado (falta `gl_skip_draws`), e o
   link falha. Contorno: `git checkout src/gl_thunks.c && touch src/gl_thunks.c`. O build Mobile
   (CMake) não regera esse arquivo.
-
-## Próximos passos
-
-1. **Você:** compilar, instalar, fazer o teste da tabela acima e mandar o `.tar.gz` do
-   `collect-logs.sh` com prints.
-2. Corrigir o que o primeiro boot mostrar (GL, áudio, caminhos, desempenho). Medir o FPS no CoTD.
-3. Quando o menu e uma partida rodarem: a Etapa 3, crossplay mínimo (descoberta na LAN do
-   Android 16, Mobile ↔ PC, Mobile ↔ TV).
-4. Em paralelo, como você pediu, só investigação: as diferenças atuais do Match Paused entre PC e
-   TV, sem mudar nada.

@@ -51,7 +51,7 @@ sem HUD de toque, com o layout de botões do Black Ops 1 de console e menus rede
 | Controle, menus, transições, nome do jogador | ✅ testado na TV |
 | Pause (dados, mapa, Dead Ops), timer, TIME PLAYED, Save & Quit → Continue | ✅ testado na TV |
 | Death Machine, DG-2, táticos no LB e HUD | ✅ testado na TV |
-| Co-op **Local Wi-Fi** (lobby, nome do jogador, seleção de mapa) | ✅ partida PC ↔ TV jogada (TV ↔ TV não testado) |
+| Co-op **Local Wi-Fi** (lobby, nome do jogador, seleção de mapa) | ✅ partidas PC ↔ TV e PC + TV + celular jogadas (TV ↔ TV não testado) |
 | Zumbi preso, correção do som, analógicos ao sair do pause | 🟡 implementado, falta confirmar na TV |
 | Ondas/drops BO1, 30 FPS, tutorial, prompts "[A] to …" | 🟡 implementado, teste completo pendente |
 | Play Online | ❌ servidores oficiais desligados |

@@ -3,7 +3,7 @@
 # 🧟 BOZ Reimagined
 
 **Call of Duty: Black Ops Zombies (2012), rebuilt for big screens and controllers.**<br>
-Play on **PC (Linux & Windows)** or **Android TV**, together in co-op, from your own copy of the game.
+Play on **PC (Linux & Windows)**, **Android TV** or, in pre-release, **Android phones**, together in co-op, from your own copy of the game.
 
 [![Release](https://img.shields.io/github/v/release/chgmcontato/BOZ-Reimagined?style=for-the-badge&color=b91c1c)](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20Android%20TV-1f2937?style=for-the-badge)](#-quick-start)
@@ -30,7 +30,8 @@ Play on **PC (Linux & Windows)** or **Android TV**, together in co-op, from your
 |---|---|
 | 🖥️ **PC port** | Runs the original ARM game code on the **Dynarmic JIT**: 60 fps with vsync, 200+ fps without |
 | 📺 **Android TV** | Patched APK played entirely with a gamepad, no touch HUD |
-| 🤝 **Cross-platform co-op** | PC and TV join the same Local Wi-Fi lobby (works over ZeroTier too) |
+| 📱 **Android phones (pre-release)** | The PC runtime on ARM64 phones, with touch controls |
+| 🤝 **Cross-platform co-op** | PC, TV and phone join the same Local Wi-Fi lobby ([how it works](#-how-co-op-works)) |
 | 🎮 **Console controls** | Xbox-style layout inspired by Black Ops on consoles, fully remappable on PC |
 | 🎨 **Reimagined menus** | Comic-style redesign of every screen, pause menu with match data, match timer |
 | 🏆 **Scoreboard** | Hold Tab or Select for a Black Ops style scoreboard, with live stats from every co-op player |
@@ -148,6 +149,49 @@ bash tv/instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.6.xdel
 
 The patch only works on top of the original APK. Full guide, including co-op over ZeroTier, in [`tv/README.md`](tv/README.md) · [português](tv/README.pt-BR.md).
 
+### 📱 Android phone (pre-release)
+
+Test build for ARM64 phones with Android 8 or newer. It doesn't contain the game: you import your own files.
+
+1. Create `BOZ-TV.apk` (see below) and copy it to the phone with the original `blackops_etc.dz`.
+2. Install `boz-reimagined-mobile-v0.7.0-beta.2.apk` from the [pre-release](https://github.com/chgmcontato/BOZ-Reimagined/releases/tag/v0.7.0-beta.2).
+3. Open **BOZ Reimagined**, choose both files and press **PLAY**.
+
+It installs beside the original game and the TV build. Uninstalling it deletes the imported files and saves. Details in [`mobile/README.md`](mobile/README.md) (Portuguese).
+
+### 🧩 Creating `BOZ-TV.apk`
+
+`BOZ-TV.apk` contains the game's code, so it isn't available for download. You create it from your own APK 1.0.11 with the patch, which contains no game files. The PC's Reimagined mode and the phone use this same file.
+
+1. Download `boz-reimagined-tv-v0.6.xdelta` from [v0.6.0](https://github.com/chgmcontato/BOZ-Reimagined/releases/tag/v0.6.0).
+2. Put it in a folder with your original APK, named `base.apk`, and check the APK (SHA-256 `348c3ca53291b28380eca44f25198cc64e2e8ce9d56ed4ac170310aff3a86747`):
+
+```bash
+sha256sum base.apk
+xdelta3 -d -s base.apk boz-reimagined-tv-v0.6.xdelta BOZ-TV.apk
+```
+
+On Windows you can use [Delta Patcher](https://github.com/marco-calautti/DeltaPatcher) instead. Any other APK version won't work.
+
+---
+
+## 🤝 How co-op works
+
+Up to 4 players share a match over **Local Wi-Fi**. PC, Android TV and Android phone can play together, in any combination.
+
+1. **Connect every device to the same network.** Guest networks and routers that isolate devices can block discovery.
+2. **Use the same mode everywhere.** PC players must select **Reimagined**: the Original and iOS modes can't join a Reimagined match.
+3. **Host:** open **Co-op → Local Wi-Fi** and create the match. **Everyone else:** open the same screen and join it.
+
+During the match:
+
+- **Zombies scale with the party:** the round size follows the number of players.
+- **If a player drops,** the match freezes on **Match Paused**, showing who is left (`PLAYERS 1 / 2`), and resumes by itself when they return.
+- **If the host drops,** another player takes over and the match continues.
+- **To come back,** use **RE-JOIN** in the Co-op menu. You spectate until the next round, as in the original game.
+
+Tested by hand with a PC (Linux), an Android TV and an Android phone in one match. Co-op on Windows and over ZeroTier hasn't been tested.
+
 ---
 
 ## 📚 Technical notes (PC)
@@ -229,6 +273,7 @@ On the pause screen, T toggles the match timer. F11: fullscreen. F3: FPS counter
 | Path | Contents |
 |---|---|
 | `src/`, `Makefile`, `run.sh` | PC port. `make` builds `build/codboz-pc`; `make clean` keeps `build/game` (installed data and saves) |
+| `mobile/` | Android phone project; shares the PC runtime in `src/` |
 | `tv/` | Android TV project: patchers, Java layer (`tv/java`), installer, map tools, docs |
 | `third_party/` | Dynarmic (submodule), cJSON, LZMA SDK, dr_mp3, stb (each under its own license) |
 | `tools/` | tests, the Dynarmic probe, code generators |

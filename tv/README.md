@@ -51,7 +51,7 @@ no touch HUD, the Black Ops 1 console button layout, and menus redesigned in the
 | Controls, menus, transitions, player name | ✅ tested on TV |
 | Pause (data, map, Dead Ops), timer, TIME PLAYED, Save & Quit → Continue | ✅ tested on TV |
 | Death Machine, DG-2, tacticals on LB and HUD | ✅ tested on TV |
-| **Local Wi-Fi** co-op (lobby, player name, map select) | ✅ PC ↔ TV match played (TV ↔ TV not tested) |
+| **Local Wi-Fi** co-op (lobby, player name, map select) | ✅ PC ↔ TV and PC + TV + phone matches played (TV ↔ TV not tested) |
 | Stuck zombie, sound fix, sticks after leaving pause | 🟡 implemented, needs confirmation on TV |
 | BO1 waves/drops, 30 FPS, tutorial, "[A] to …" prompts | 🟡 implemented, full test pending |
 | Play Online | ❌ official servers are offline |
