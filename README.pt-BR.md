@@ -105,7 +105,7 @@ Jogue no **PC (Linux e Windows)** ou na **Android TV**, juntos no co-op, a parti
 1. Baixe em [**Releases**](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest):
    - **Windows 10/11:** `codboz-pc-windows-x64.zip` (um `.exe`, sem DLLs extras)
    - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (precisa do SDL2 e da glibc 2.38+)
-2. Abra. No launcher: **Install APK** (ou **Install IPA**) → **Choose** (Game data, o OBB) → **PLAY**. O launcher abre em inglês; troque para português em **Settings**.
+2. Abra. No launcher, abra a aba **Versões**: **Instalar** no cartão da versão (APK ou IPA) → **Selecionar** (OBB) → **JOGAR**. O launcher abre em inglês; troque para português em **Settings**.
 
 ```bash
 # Linux
@@ -143,7 +143,7 @@ Publique os dois pacotes na release `v<VERSION>` junto com o `SHA256SUMS.txt` (`
 
 ```bash
 # precisa de adb e xdelta3; TV com ADB pela rede ativado
-bash tv/instalar.sh <IP-da-TV> base.apk blackops_etc.dz boz-reimagined-tv-v0.4.xdelta
+bash tv/instalar.sh <IP-da-TV> base.apk blackops_etc.dz boz-reimagined-tv-v0.6.xdelta
 ```
 
 O patch só funciona sobre o APK original. Guia completo, incluindo co-op pelo ZeroTier, em [`tv/README.pt-BR.md`](tv/README.pt-BR.md).
@@ -215,6 +215,7 @@ de pause, T liga e desliga o timer. F11: tela cheia. F3: contador de FPS.
 <summary><b>Problemas conhecidos</b></summary>
 <br>
 
+- Co-op RE-JOIN: quem volta assiste como espectador até o próximo round, como no jogo; sem o host, o YES abre um lobby próprio.
 - Windows: testado no Wine (menus, uma partida de Call of the Dead, 60 fps); ainda não em Windows de verdade, co-op não testado lá.
 - Save & Quit → Continue não restaura o timer da partida.
 - Modo iOS: o primeiro clique depois da tela de título é ignorado (clique de novo); `s3eInetPton` ainda é um stub.

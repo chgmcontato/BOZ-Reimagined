@@ -18,3 +18,11 @@ perf.data.old
 /build-dynarmic/
 /build-unicorn/
 /build-win/
+
+# Reimagined PSD export: contains art from the installed game
+/assets/reimagined/psd/psd/
+/assets/reimagined/psd/svg/
+/assets/reimagined/psd/preview/
+/assets/reimagined/psd/layers/
+/assets/reimagined/psd/layers.json
+/assets/reimagined/psd/native/

@@ -46,9 +46,11 @@ static uint32_t rd(uint32_t addr) {
     return *(volatile uint32_t *)G2H(addr);
 }
 
+static int sb_remote_count(void);
 static struct coop_pause_state g_coop_pause;
 static int g_party; /* most players seen in this match (connections can include stale entries) */
 static uint32_t g_owned_pause;
+static bool g_test_hold; /* CODBOZ_TEST_FREEZE holding right now */
 static uint32_t ingame_state(void) {
     uint32_t app=rd(IMG(0x491784));
     if(!app || rd(app)!=IMG(0x42f250))return 0;
@@ -60,11 +62,37 @@ static uint32_t ingame_state(void) {
     }
     return 0;
 }
+/*
+ * The round's counters, from WaveManagerStateInfo's reflection table (the state starts at +0x6c).
+ * Logged around a co-op pause: the round must come back as it went in.
+ */
+struct round_snapshot {
+    int zombies, powered, wave, killed, countdown;
+};
+
+static void round_snapshot(struct round_snapshot *s) {
+    uint32_t waves = rd(IMG(0x4958c4));
+    memset(s, 0, sizeof(*s));
+    if (waves) {
+        s->zombies = (int)rd(waves + 0x70);
+        s->powered = (int)rd(waves + 0x74);
+        s->wave = (int)rd(waves + 0x78);
+        s->killed = (int)rd(waves + 0xa0);
+        s->countdown = (int)rd(waves + 0x98);
+    }
+}
+
+static void round_log(const char *tag, const struct round_snapshot *s) {
+    log_info("round state %s: wave %d, zombieCounter %d, poweredZombieCounter %d, zombiesKilled %d, countdown %d",
+             tag, s->wave, s->zombies, s->powered, s->killed, s->countdown);
+}
+
 static void sync_coop_pause(bool active) {
     uint32_t state=ingame_state(), network=rd(IMG(0x4958d4));
-    if(active && (!state || !network))return;
-    bool before=g_coop_pause.waiting;
-    bool waiting=coop_pause_update(&g_coop_pause,active,state,active?(int)rd(network+0x64):0);
+    if(active && !state)return;
+    bool before=g_coop_pause.waiting && !g_test_hold;
+    /* no network object in a live co-op match means nobody is connected */
+    bool waiting=coop_pause_update(&g_coop_pause,active,state,active&&network?(int)rd(network+0x64):0,monotonic_ms());
     /* re-assert after a native pause/unpause so the freeze cannot be bypassed */
     if(waiting && state && (rd(state+0x50)&255u)==0) {
         *(volatile uint8_t *)G2H(state+0x50)=1;g_owned_pause=state;
@@ -73,7 +101,33 @@ static void sync_coop_pause(bool active) {
             *(volatile uint8_t *)G2H(state+0x50)=0;
         g_owned_pause=0;
     }
-    if(before!=waiting)log_info("co-op: %s",waiting?"match paused, waiting for missing player":"party restored, match resumed");
+    /* every change a reconnection test needs to compare: round, party and this player's game state */
+    if(active && state) {
+        static int last_wave=-1,last_peers=-1,last_sub=-1,last_rejoin=-1;
+        struct round_snapshot snap;
+        round_snapshot(&snap);
+        uint32_t level=rd(IMG(0x4958d0));
+        int sub=(int)rd(state+0x10),rejoin=level?(int)(rd(level+0x208)>>8&0xffu):-1,peers=g_coop_pause.peers;
+        if(snap.wave!=last_wave||peers!=last_peers||sub!=last_sub||rejoin!=last_rejoin) {
+            log_info("coop state: peers %d of %d, remotes %d, ingame state %d, rejoined level %d, waiting %d",
+                     peers,g_coop_pause.baseline,sb_remote_count(),sub,rejoin,g_coop_pause.waiting);
+            round_log(snap.wave!=last_wave?"wave change":"event",&snap);
+            last_wave=snap.wave;last_peers=peers;last_sub=sub;last_rejoin=rejoin;
+        }
+    }
+    if(before!=waiting) {
+        static struct round_snapshot at_pause;
+        struct round_snapshot now;
+        round_snapshot(&now);
+        round_log(waiting?"at pause":"at resume",&now);
+        if(waiting) at_pause=now;
+        else if(memcmp(&at_pause,&now,sizeof(now))!=0) log_info("round state: CHANGED during the pause");
+    }
+    if(before!=waiting)log_info("co-op: %s (%d of %d players)",waiting?"match paused, waiting for missing player":"party restored, match resumed",g_coop_pause.peers,g_coop_pause.baseline);
+}
+
+bool reimagined_match_waiting(void) {
+    return g_coop_pause.waiting;
 }
 
 static bool timer_valid(void) {
@@ -82,6 +136,18 @@ static bool timer_valid(void) {
 
 bool reimagined_match_active(void) {
     return timer_valid() && rd(IMG(TIMER) + 8) == 1;
+}
+
+/* 1 co-op, 0 solo, -1 unknown (no match running or no level yet). */
+int reimagined_match_coop(void) {
+    uint32_t level = reimagined_match_active() ? rd(IMG(LEVEL)) : 0;
+    return level ? (rd(level + 0x208) & 0xffu) != 0 : -1;
+}
+
+/* The game's own "a session can be re-joined" flag (network+0x88, what setEnableReconnect gets). */
+bool reimagined_rejoin_available(void) {
+    uint32_t net = rd(IMG(0x4958d4));
+    return net && (rd(net + 0x88) & 0xffu) != 0;
 }
 
 bool reimagined_patched(void) {
@@ -440,12 +506,47 @@ void reimagined_frame(void) {
             uint32_t t = IMG(TIMER);
             uint64_t elapsed = (uint64_t)rd(t + 12) | ((uint64_t)rd(t + 16) << 32);
             uint32_t net = rd(IMG(0x4958d4));
+            if (g_coop_pause.waiting || getenv("CODBOZ_ROUND_LOG")) {
+                struct round_snapshot snap;
+                round_snapshot(&snap);
+                round_log(g_coop_pause.waiting ? "paused" : "live", &snap);
+            }
             log_info("perf: wall %llu ms, game timer %llu, round %d, net %08x peers %d", (unsigned long long)now,
                      (unsigned long long)elapsed, g_round, net,
                      net >= (uint32_t)GUEST_HEAP_BASE ? (int)rd(net + 0x64) : -1);
         }
     }
-    sync_coop_pause(reimagined_match_active() && screens_coop_session());  /* includes the network check */
+    /* debug: CODBOZ_NO_MATCH_PAUSE=1 leaves a dropped party to the game alone, to compare re-joining */
+    sync_coop_pause(reimagined_match_active() && screens_coop_session() && !getenv("CODBOZ_NO_MATCH_PAUSE"));  /* includes the network check */
+    /* debug: CODBOZ_PREVIEW_COOP=1 sets the game's co-op flag, so a solo match opens the native co-op pause */
+    if (getenv("CODBOZ_PREVIEW_COOP") && reimagined_match_active() && rd(IMG(LEVEL))) {
+        *(volatile uint8_t *)G2H(rd(IMG(LEVEL)) + 0x208) = 1;
+    }
+    /* debug: CODBOZ_TEST_FREEZE=S holds the pause for 20 s from second S of a match, to measure the freeze */
+    if (getenv("CODBOZ_TEST_FREEZE")) {
+        static uint64_t since;
+        uint64_t now = monotonic_ms();
+        uint32_t state = ingame_state();
+        if (!reimagined_match_active() || !state) {
+            since = 0;
+        } else {
+            if (!since) {
+                since = now;
+            }
+            uint64_t at = (uint64_t)atoi(getenv("CODBOZ_TEST_FREEZE")) * 1000;
+            bool hold = now - since >= at && now - since < at + 20000;
+            *(volatile uint8_t *)G2H(state + 0x50) = hold;
+            if (hold) {
+                g_coop_pause.waiting = true;
+            }
+            if (hold != g_test_hold) {
+                struct round_snapshot snap;
+                round_snapshot(&snap);
+                round_log(hold ? "test freeze start" : "test freeze end", &snap);
+            }
+            g_test_hold = hold; /* the card and the low-FPS mode follow, as in a real wait */
+        }
+    }
     extern void reimagined_coop_stats_frame(void);
     reimagined_coop_stats_frame();
     bool gameplay = reimagined_match_active() && !screen;
@@ -480,11 +581,10 @@ static void draw_coop_pause(void) {
     ui_label(dots[(now / 400) % 4], end, y + 138, 24, paper, UI_LEFT);
 
     char line[96];
-    /* network+0x64 counts connections, which may include a stale one: only the drop is reliable */
-    int missing = g_coop_pause.peak - g_coop_pause.peers;
-    int expected = g_party >= 2 ? g_party : 2, present = expected - (missing > 0 ? missing : 1);
-    if (present < 1) {
-        present = 1;
+    int expected = g_coop_pause.baseline >= 2 ? g_coop_pause.baseline : 2;
+    int present = g_coop_pause.peers < 1 ? 1 : g_coop_pause.peers;
+    if (present >= expected) {
+        present = expected - 1;
     }
     snprintf(line, sizeof(line), "PLAYERS %d / %d", present, expected);
     ui_font(UI_FONT_BODY);
@@ -806,7 +906,7 @@ void reimagined_draw(void) {
         const char *env = getenv("CODBOZ_PREVIEW_COOP_PAUSE"); /* debug: show the card in any match */
         preview = env && *env == '1';
         if (preview) {
-            g_coop_pause.peak = 1;
+            g_coop_pause.baseline = 2;
         }
     }
     if (active && !screen && (g_coop_pause.waiting || preview)) {

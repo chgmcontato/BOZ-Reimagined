@@ -209,9 +209,9 @@ void settings_save(void) {
     fprintf(file,
             "# Call of Duty: Black Ops Zombies - PC settings\n"
             "# width/height: game image size; fullscreen=1 scales it to the monitor, borderless\n"
-            "fullscreen=%d\nwidth=%d\nheight=%d\nvsync=%d\nfps_limit=%d\nshow_fps=%d\n"
+            "fullscreen=%d\nwidth=%d\nheight=%d\nvsync=%d\nfps_limit=%d\nlow_fps_paused=%d\nshow_fps=%d\n"
             "mouse_sensitivity=%.2f\nmouse_y_scale=%.2f\ninvert_y=%d\nmouse_look=%s\nlanguage=%s\nauto_update=%d\nplayer_name=%s\n",
-            g_opt.fullscreen, g_opt.width, g_opt.height, g_opt.vsync, g_opt.fps_limit,
+            g_opt.fullscreen, g_opt.width, g_opt.height, g_opt.vsync, g_opt.fps_limit, g_opt.low_fps_paused,
             g_opt.show_fps, g_opt.mouse_sensitivity, g_opt.mouse_y_scale, g_opt.invert_y,
             g_opt.mouse_drag ? "drag" : "stick", g_opt.english ? "en" : "pt", g_opt.auto_update, g_player_name);
     fclose(file);
@@ -306,6 +306,8 @@ void settings_load(void) {
             g_opt.vsync = parse_bool(value);
         } else if (strcmp(key, "fps_limit") == 0) {
             g_opt.fps_limit = atoi(value);
+        } else if (strcmp(key, "low_fps_paused") == 0) {
+            g_opt.low_fps_paused = atoi(value);
         } else if (strcmp(key, "show_fps") == 0) {
             g_opt.show_fps = parse_bool(value);
         } else if (strcmp(key, "language") == 0) {

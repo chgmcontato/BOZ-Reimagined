@@ -33,6 +33,8 @@ static struct {
     void (*PopClientAttrib)(void);
     void (*MatrixMode)(uint32_t);
     void (*PushMatrix)(void);
+    void (*Translatef)(float, float, float);
+    void (*Rotatef)(float, float, float, float);
     void (*PopMatrix)(void);
     void (*LoadIdentity)(void);
     void (*Ortho)(double, double, double, double, double, double);
@@ -97,6 +99,8 @@ void ui_init(void) {
     LOAD(PopClientAttrib, "glPopClientAttrib");
     LOAD(MatrixMode, "glMatrixMode");
     LOAD(PushMatrix, "glPushMatrix");
+    LOAD(Translatef, "glTranslatef");
+    LOAD(Rotatef, "glRotatef");
     LOAD(PopMatrix, "glPopMatrix");
     LOAD(LoadIdentity, "glLoadIdentity");
     LOAD(Ortho, "glOrtho");
@@ -553,6 +557,17 @@ void ui_image_cover(const struct ui_image *image, float x, float y, float w, flo
     float s = w / (float)image->w > h / (float)image->h ? w / (float)image->w : h / (float)image->h;
     float iw = (float)image->w * s, ih = (float)image->h * s;
     ui_image(image, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih, alpha);
+}
+
+void ui_rotate_begin(float cx, float cy, float degrees) {
+    gl.PushMatrix();
+    gl.Translatef(X(cx), Y(cy), 0);
+    gl.Rotatef(degrees, 0, 0, 1);
+    gl.Translatef(-X(cx), -Y(cy), 0);
+}
+
+void ui_rotate_end(void) {
+    gl.PopMatrix();
 }
 
 void ui_quad(const float pts[8], uint32_t argb) {

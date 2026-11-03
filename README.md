@@ -105,7 +105,7 @@ Play on **PC (Linux & Windows)** or **Android TV**, together in co-op, from your
 1. Download from [**Releases**](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest):
    - **Windows 10/11:** `codboz-pc-windows-x64.zip` (one `.exe`, no extra DLLs)
    - **Linux:** `codboz-pc-linux-x86_64.tar.gz` (needs SDL2 and glibc 2.38+)
-2. Run it. In the launcher: **Install APK** (or **Install IPA**) → **Choose** (Game data) → **PLAY**.
+2. Run it. In the launcher, open the **Versions** tab: **Install** on the version card (APK or IPA) → **Choose** (OBB) → **PLAY**.
 
 ```bash
 # Linux
@@ -143,7 +143,7 @@ Publish both archives in the release `v<VERSION>` together with `SHA256SUMS.txt`
 
 ```bash
 # needs adb and xdelta3; TV with ADB over network enabled
-bash tv/instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.4.xdelta
+bash tv/instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.6.xdelta
 ```
 
 The patch only works on top of the original APK. Full guide, including co-op over ZeroTier, in [`tv/README.md`](tv/README.md) · [português](tv/README.pt-BR.md).
@@ -207,7 +207,7 @@ On the pause screen, T toggles the match timer. F11: fullscreen. F3: FPS counter
 - Windows is cross-built with MinGW-w64 (`brew install mingw-w64`). There the guest heap is 764 MB
   instead of 1 GB (Windows keeps a page at 0x7ffe0000); a match uses about 155 MB.
 - `CODBOZ_PERF=1` logs a per-second performance line; `CODBOZ_SCRIPT` drives the game from a
-  script (used for the screenshots above); `CODBOZ_PREVIEW_COOP_PAUSE=1` shows the co-op pause card.
+  script (used for the screenshots above); `CODBOZ_PREVIEW_COOP_PAUSE=1` shows the co-op pause card, `CODBOZ_PREVIEW_COOP=1` shows the co-op menus in a solo match; `CODBOZ_TEST_FREEZE=S` holds a co-op-style pause for 20 s from second S of a match; `CODBOZ_AIM_PROBE=1` logs the player's yaw and pitch next to the mouse motion (read-only).
 
 </details>
 
@@ -215,6 +215,7 @@ On the pause screen, T toggles the match timer. F11: fullscreen. F3: FPS counter
 <summary><b>Known issues</b></summary>
 <br>
 
+- Co-op RE-JOIN: a returning player spectates until the next round, as in the game; with no host, YES opens a new lobby.
 - Windows: tested under Wine (menus, a Call of the Dead match, 60 fps); not yet on real Windows, co-op untested there.
 - Save & Quit → Continue does not restore the match timer.
 - iOS mode: the first click after the title screen is ignored (click again); `s3eInetPton` is still a stub.

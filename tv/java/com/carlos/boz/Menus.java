@@ -114,11 +114,16 @@ final class Menus {
     private volatile int[] m_Px;         // última imagem em cores (2x a grade: 320x180), para achar o botão dos sliders
     private static boolean s_CoopSession;
 static boolean coopSession() { return s_CoopSession; }
+    /** A confirmação de RE-JOIN é do jogo: vinda da página Co-op, fica visível e só recebe o foco. */
+    private static volatile boolean s_RejoinDialog;
+    static boolean rejoinDialog() { return s_RejoinDialog; }
     private Screen effectiveCurrent() {
         if (s_CoopSession && m_Current != null && "pause".equals(m_Current.id))
             for (Screen s : m_Screens) if ("pausecoop".equals(s.id)) return s;
         return m_Current;
     }
+    private long m_RecNs;
+    private int m_RecCount;
     private boolean m_ReconnectDismissed;
     void allowReconnectConfirmation() { m_ReconnectDismissed = false; }
     void reconnectConfirmationChosen() {
@@ -300,7 +305,14 @@ static boolean coopSession() { return s_CoopSession; }
                 m_Bitmap.getPixels(px, 0, m_Bitmap.getWidth(), 0, 0, m_Bitmap.getWidth(), m_Bitmap.getHeight());
                 m_Px = px;
                 int[] gray = toGray(m_Bitmap);
+                long t0 = System.nanoTime();
                 Screen s = recognize(blur(gray));
+                m_RecNs += System.nanoTime() - t0;
+                if (++m_RecCount == 200) {
+                    Log.i(TAG, "Menus: reconhecimento médio " + (m_RecNs / 200000) + " us");
+                    m_RecCount = 0;
+                    m_RecNs = 0;
+                }
                 m_Main.post(() -> { setCurrent(s); capturePausePlayers(); });
             }, m_Copy);
         } catch (Exception e) {
@@ -351,9 +363,13 @@ static boolean coopSession() { return s_CoopSession; }
         for (Screen s : m_Screens) {
             if (m_ReconnectDismissed && "reconnectconfirm".equals(s.id)) continue;
             if ("leavecoop".equals(s.id) && !s_CoopSession) continue;
-            if (s.after != null && s != m_Current && ((m_Current != null ? m_Current : m_LastKnown) == null ||
+            // m_LastKnown == s: a sonda falhou por um instante na própria tela; ela continua valendo
+            if (s.after != null && s != m_Current && !(m_Current == null && m_LastKnown == s)
+                    && ((m_Current != null ? m_Current : m_LastKnown) == null ||
                     !s.after.contains((m_Current != null ? m_Current : m_LastKnown).id))) continue;
             float d = match(s, g);
+            // os cartões do Map Vote ficam sobre o mesmo fundo do lobby: quando aparecem, é a tela de voto
+            if ("coopvote".equals(s.id) && d < THRESHOLD) return s;
             if (d < bestD) { bestD = d; best = s; }
         }
         return best;
@@ -378,10 +394,12 @@ static boolean coopSession() { return s_CoopSession; }
                 if (cx < 0 || cy < 0 || cx + pw > m_GW || cy + ph > m_GH) continue;
                 long sum = 0;
                 int k = 0;
-                for (int j = 0; j < ph; j++)
+                // para esta posição assim que ela não pode mais vencer: o mínimo final é o mesmo
+                final float limit = best * ref.length;
+                for (int j = 0; j < ph && sum < limit; j++)
                     for (int i = 0; i < pw; i++)
                         sum += Math.abs(g[(cy + j) * m_GW + cx + i] - ref[k++]);
-                best = Math.min(best, sum / (float) ref.length);
+                if (sum < limit) best = sum / (float) ref.length;
             }
         }
         return best;
@@ -396,6 +414,10 @@ static boolean coopSession() { return s_CoopSession; }
             if (now - m_UnknownSince < 750) return;
         } else m_UnknownSince = 0;
         if (s == m_Current) return;
+        if (s != null && "reconnectconfirm".equals(s.id)) {
+            Screen from = m_Current != null ? m_Current : m_LastKnown;
+            s_RejoinDialog = from != null && "coop".equals(from.id);
+        } else if (s != null) s_RejoinDialog = false;
         if (s != null && s.id.startsWith("coop")) s_CoopSession = true;
         // só o menu principal e o Single (caminho do solo) apagam a marca: a escolha de personagem do co-op pode ser
         // reconhecida como "charselect" e apagava a marca antes da partida co-op

@@ -43,7 +43,13 @@ static const struct screen *g_current, *g_last_known;
 static bool g_coop_session;
 
 bool screens_coop_session(void) {
-    return g_coop_session;
+    /* In a match the game's own flag decides: the frame recognition can miss the co-op lobby. */
+    if (getenv("CODBOZ_PREVIEW_COOP")) { /* debug: see the co-op menus in a solo match */
+        return true;
+    }
+    extern int reimagined_match_coop(void);
+    int native = reimagined_match_coop();
+    return native >= 0 ? native != 0 : g_coop_session;
 }
 static uint64_t g_next_ms, g_changed_ms, g_unknown_since;
 static uint32_t g_fbo, g_rb;
@@ -206,7 +212,7 @@ static float match(const struct screen *s, const int *g) {
  * and turn Esc into that page's BACK instead of pausing. */
 static bool front_end_only(const char *id) {
     static const char *const ids[] = {"title", "title_prompt", "main", "single", "newgame", "charselect",
-                                      "coop", "coopwifi", "coopmap", "cooplobby", "reconnectconfirm",
+                                      "coop", "coopwifi", "coopmap", "cooplobby", "coopvote", "reconnectconfirm",
                                       "player_profile", "extras"};
     for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
         if (strcmp(id, ids[i]) == 0) {
@@ -220,8 +226,15 @@ static int allowed_after(const struct screen *s) {
     if (reimagined_match_active() && front_end_only(s->id)) {
         return 0;
     }
-    if (strcmp(s->id, "leavecoop") == 0 && !g_coop_session) {
+    if (strcmp(s->id, "leavecoop") == 0 && !screens_coop_session()) {
         return 0;
+    }
+    /* Its burst art also resembles the native re-join dialog, where "this will erase the session"
+     * would be a lie: the warning only follows Local Wi-Fi's page. */
+    if (strcmp(s->id, "reconnectconfirm") == 0 && s != g_current) {
+        const struct screen *from = g_current ? g_current : g_last_known;
+        /* from == s: recognition missed a frame of this same dialog, it still counts */
+        return from && (from == s || strcmp(from->id, "coopwifi") == 0);
     }
     if (!s->after_count || s == g_current) {
         return 1;

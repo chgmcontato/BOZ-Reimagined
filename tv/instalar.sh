@@ -6,7 +6,7 @@ set -euo pipefail
 TV="$1:5555"; APK="$2"; OBB="$3"; PATCH="$4"
 APK_SHA=348c3ca53291b28380eca44f25198cc64e2e8ce9d56ed4ac170310aff3a86747
 OBB_SHA=4537aabe0be836048bafd7493ac5f18b33c0bc19d6dd0b873533bb953bbd3a91
-OUT_SHA=4ac53f23396cacf34190036def142ff711287847280b0b018b3da1f4125dbeb9
+OUT_SHA=4488bc4bab9cf81fdc923b0a3c56f151cdbbf0f0e52553bdd8172fc3229f24b6
 
 for c in adb xdelta3 sha256sum; do command -v $c >/dev/null || { echo "Falta o programa: $c"; exit 1; }; done
 check() { echo -n "Conferindo $1... "; [ "$(sha256sum "$1" | cut -d' ' -f1)" = "$2" ] && echo ok || { echo "hash diferente: não é a versão certa"; exit 1; }; }
