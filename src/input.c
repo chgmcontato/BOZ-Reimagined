@@ -17,6 +17,7 @@
 #include <SDL.h>
 #include <math.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 enum {
     KEY_STATE_DOWN = 1,
@@ -597,7 +598,10 @@ static void handle_event(const SDL_Event *ev) {
         device_request_quit();
         audio_shutdown();
         video_shutdown();
-        exit(0);
+        /* This runs inside a JIT callback: exit() would destroy the running Dynarmic::A32::Jit in its
+         * static destructors and abort on the heap. Nothing is left to save here. */
+        fflush(NULL);
+        _exit(0);
     case SDL_WINDOWEVENT:
         if (ev->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
             input_cancel_tap();
