@@ -522,10 +522,10 @@ extern "C" void ret64(uint64_t value) {
     auto &r = current_jit().Regs();
     r[0] = static_cast<uint32_t>(value);
     r[1] = static_cast<uint32_t>(value >> 32);
-    /* Scratch registers come back clear from a Marmalade timer call. BOZ formats its session name with
-     * "%s_%lu" and a 64-bit time on the stack, so %lu reads r3: this is what makes it "kino_0" on every
-     * device, and a re-joining player searches for that exact name. */
-    r[3] = 0;
+    /* Experimental (CODBOZ_SESSION_ZERO=1): BOZ formats its session name with "%s_%lu" and a 64-bit time on
+     * the stack, so %lu reads r3. On a real device that is 0 ("kino_0"); here it is leftover memory. */
+    static const bool session_zero = getenv("CODBOZ_SESSION_ZERO") != nullptr;
+    if (session_zero) r[3] = 0;
 }
 
 extern "C" void retf(float value) {
