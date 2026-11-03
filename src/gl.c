@@ -62,6 +62,10 @@ enum {
     EGL_DRAW = 0x3059,
 };
 
+#ifdef CODBOZ_GLES
+static void report_gl_errors(void);
+#endif
+
 /* Opaque EGL handles: guest-visible tokens. */
 static uint32_t g_egl_display, g_egl_config, g_egl_surface, g_egl_context;
 static int g_es_version = 1;
@@ -560,6 +564,9 @@ static void sleep_until(uint64_t *next, uint64_t interval) {
 }
 
 void video_swap(void) {
+#ifdef CODBOZ_GLES
+    report_gl_errors(); /* before the runtime's own drawing: these are the game's */
+#endif
     /* The presentation/HUD code uses native GL directly, outside guest thunks. */
     gl_state_invalidate();
     GLFN(void, glBindFramebuffer, uint32_t, uint32_t);
@@ -1335,6 +1342,43 @@ IMPORT(glTexParameterxv) {
     glTexParameterf(arg(0), arg(1), is_enum_param(arg(1)) ? (float)in[0] : FX(in[0]));
 }
 
+#ifdef CODBOZ_GLES
+/* Android first boots: a shader program the driver refuses is logged with its reason. */
+IMPORT(glLinkProgram) {
+    GLFN(void, glLinkProgram, uint32_t);
+    GLFN(void, glGetProgramiv, uint32_t, uint32_t, int32_t *);
+    GLFN(void, glGetProgramInfoLog, uint32_t, int32_t, int32_t *, char *);
+    gl_state_program_changed(arg(0)); /* what the generated thunk does */
+    glLinkProgram(arg(0));
+    int32_t ok = 0;
+    glGetProgramiv(arg(0), 0x8b82, &ok); /* GL_LINK_STATUS */
+    if (!ok) {
+        char text[2048] = "";
+        glGetProgramInfoLog(arg(0), sizeof(text), NULL, text);
+        log_error("GL program %u failed to link: %s", arg(0), text);
+    }
+}
+
+/* Android first boots: GL errors (a refused texture format, a bad enum), at most 40 lines. */
+static void report_gl_errors(void) {
+    static unsigned frames, lines;
+    if (++frames % 120 != 0 || lines >= 40 || !getenv("CODBOZ_PERF")) {
+        return;
+    }
+    GLFN(uint32_t, glGetError, void);
+    for (int i = 0; i < 8; ++i) {
+        uint32_t error = glGetError();
+        if (!error) {
+            break;
+        }
+        log_error("GL error 0x%04x (frame %u)", error, frames);
+        if (++lines == 40) {
+            log_info("GL errors: no more reports");
+        }
+    }
+}
+#endif
+
 void register_gl_thunks(void);
 
 static const char *const k_special[] = {
@@ -1359,6 +1403,9 @@ int gl_has_thunk(const char *name) {
 
 void register_gl_imports(void) {
     register_gl_thunks();
+#ifdef CODBOZ_GLES
+    REG(glLinkProgram);
+#endif
     REG(glGetString);
     REG(glGetIntegerv);
     REG(glBindFramebuffer);
