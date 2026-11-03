@@ -1018,6 +1018,10 @@ static bool touch_action(int action) {
     return touch_controls_down(action);
 }
 
+bool input_in_gameplay(void) {
+    return g_captured;
+}
+
 void input_draw_touch_controls(void) {
     if (g_captured && !g_touch_hidden) {
         touch_controls_draw();
