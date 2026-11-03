@@ -1,7 +1,7 @@
 # BOZ Reimagined Mobile (Android ARM64)
 
 O runtime do PC (`src/`) compilado para Android ARM64, rodando o **mesmo `boz.s3e` ARM32 do
-Reimagined TV** no Dynarmic. Está em pré-release: as seções abaixo guardam também o histórico de diagnóstico.
+Reimagined TV** no Dynarmic. As seções abaixo guardam também o histórico de diagnóstico.
 
 > **Estado:** num Galaxy S24 FE com Android 16, o jogo abre, joga uma partida Solo e joga co-op com PC
 > e Android TV na mesma rede, em testes feitos à mão.

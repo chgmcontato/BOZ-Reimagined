@@ -3,7 +3,7 @@
 # 🧟 BOZ Reimagined
 
 **Call of Duty: Black Ops Zombies (2012), rebuilt for big screens and controllers.**<br>
-Play on **PC (Linux & Windows)**, **Android TV** or, in pre-release, **Android phones**, together in co-op, from your own copy of the game.
+Play on **PC (Linux & Windows)**, **Android TV** or **Android phones**, together in co-op, from your own copy of the game.
 
 [![Release](https://img.shields.io/github/v/release/chgmcontato/BOZ-Reimagined?style=for-the-badge&color=b91c1c)](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20Android%20TV-1f2937?style=for-the-badge)](#-quick-start)
@@ -30,7 +30,7 @@ Play on **PC (Linux & Windows)**, **Android TV** or, in pre-release, **Android p
 |---|---|
 | 🖥️ **PC port** | Runs the original ARM game code on the **Dynarmic JIT**: 60 fps with vsync, 200+ fps without |
 | 📺 **Android TV** | Patched APK played entirely with a gamepad, no touch HUD |
-| 📱 **Android phones (pre-release)** | The PC runtime on ARM64 phones, with touch controls |
+| 📱 **Android phones** | The PC runtime on ARM64 phones, with touch controls |
 | 🤝 **Cross-platform co-op** | PC, TV and phone join the same Local Wi-Fi lobby ([how it works](#-how-co-op-works)) |
 | 🎮 **Console controls** | Xbox-style layout inspired by Black Ops on consoles, fully remappable on PC |
 | 🎨 **Reimagined menus** | Comic-style redesign of every screen, pause menu with match data, match timer |
@@ -149,12 +149,12 @@ bash tv/instalar.sh <TV-IP> base.apk blackops_etc.dz boz-reimagined-tv-v0.6.xdel
 
 The patch only works on top of the original APK. Full guide, including co-op over ZeroTier, in [`tv/README.md`](tv/README.md) · [português](tv/README.pt-BR.md).
 
-### 📱 Android phone (pre-release)
+### 📱 Android phone
 
-Test build for ARM64 phones with Android 8 or newer. It doesn't contain the game: you import your own files.
+For ARM64 phones with Android 8 or newer. It doesn't contain the game: you import your own files.
 
 1. Create `BOZ-TV.apk` (see below) and copy it to the phone with the original `blackops_etc.dz`.
-2. Install `boz-reimagined-mobile-v0.7.0-beta.2.apk` from the [pre-release](https://github.com/chgmcontato/BOZ-Reimagined/releases/tag/v0.7.0-beta.2).
+2. Install `boz-reimagined-mobile-v0.7.0.apk` from [**Releases**](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest).
 3. Open **BOZ Reimagined**, choose both files and press **PLAY**.
 
 It installs beside the original game and the TV build. Uninstalling it deletes the imported files and saves. Details in [`mobile/README.md`](mobile/README.md) (Portuguese).
@@ -163,7 +163,7 @@ It installs beside the original game and the TV build. Uninstalling it deletes t
 
 `BOZ-TV.apk` contains the game's code, so it isn't available for download. You create it from your own APK 1.0.11 with the patch, which contains no game files. The PC's Reimagined mode and the phone use this same file.
 
-1. Download `boz-reimagined-tv-v0.6.xdelta` from [v0.6.0](https://github.com/chgmcontato/BOZ-Reimagined/releases/tag/v0.6.0).
+1. Download `boz-reimagined-tv-v0.6.xdelta` from [**Releases**](https://github.com/chgmcontato/BOZ-Reimagined/releases/latest).
 2. Put it in a folder with your original APK, named `base.apk`, and check the APK (SHA-256 `348c3ca53291b28380eca44f25198cc64e2e8ce9d56ed4ac170310aff3a86747`):
 
 ```bash
