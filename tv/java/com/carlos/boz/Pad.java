@@ -234,6 +234,7 @@ public final class Pad implements InputManager.InputDeviceListener {
     }
 
     private String m_LastAxes = "";
+    private boolean m_RightSeenNegative;
     private int m_LoggedStandardRight = -1; // -1: ainda não registrado
 
     private static final int[] LOG_AXES = {MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_Z,
@@ -263,14 +264,22 @@ public final class Pad implements InputManager.InputDeviceListener {
         InputDevice dev = e.getDevice();
         InputDevice.MotionRange z = dev == null ? null : dev.getMotionRange(MotionEvent.AXIS_Z);
         InputDevice.MotionRange rz = dev == null ? null : dev.getMotionRange(MotionEvent.AXIS_RZ);
-        boolean standardRight = z != null && rz != null && z.getMin() < -0.5f && rz.getMin() < -0.5f;
-        if (!standardRight || (rx == 0f && ry == 0f && (axis(e, MotionEvent.AXIS_RX) != 0f || axis(e, MotionEvent.AXIS_RY) != 0f))) {
-            rx = axis(e, MotionEvent.AXIS_RX);
-            ry = axis(e, MotionEvent.AXIS_RY);
+        InputDevice.MotionRange ax = dev == null ? null : dev.getMotionRange(MotionEvent.AXIS_RX);
+        // Z/RZ são gatilhos só se o controle declarar 0..1. Sem essa declaração (faixa ausente, dispositivo
+        // desconhecido) continuam sendo o analógico: gatilho nunca fica negativo, e nem todo controle tem RX/RY.
+        if (rx < -0.1f || ry < -0.1f) m_RightSeenNegative = true;
+        boolean triggers = (z != null && z.getMin() > -0.5f) || (rz != null && rz.getMin() > -0.5f);
+        boolean standardRight = m_RightSeenNegative || !triggers || ax == null;
+        float altX = axis(e, MotionEvent.AXIS_RX), altY = axis(e, MotionEvent.AXIS_RY);
+        if (!standardRight || (rx == 0f && ry == 0f && (altX != 0f || altY != 0f))) {
+            rx = altX;
+            ry = altY;
         }
         if ((standardRight ? 1 : 0) != m_LoggedStandardRight) {
             m_LoggedStandardRight = standardRight ? 1 : 0;
-            Log.i(TAG, "analógico direito: " + (standardRight ? "Z/RZ" : "RX/RY"));
+            Log.i(TAG, "analógico direito: " + (standardRight ? "Z/RZ" : "RX/RY") + " device=" + (dev != null ? dev.getName() : "null")
+                    + " z=" + (z != null ? z.getMin() : Float.NaN) + " rz=" + (rz != null ? rz.getMin() : Float.NaN)
+                    + " rx=" + (ax != null ? ax.getMin() : Float.NaN));
         }
         float lt = Math.max(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE));
         float rt = Math.max(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS));
