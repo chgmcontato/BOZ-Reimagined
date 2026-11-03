@@ -229,6 +229,12 @@ static int allowed_after(const struct screen *s) {
     if (strcmp(s->id, "leavecoop") == 0 && !screens_coop_session()) {
         return 0;
     }
+    /* Its burst art also resembles the native re-join dialog, where "this will erase the session"
+     * would be a lie: the warning only follows Local Wi-Fi's page. */
+    if (strcmp(s->id, "reconnectconfirm") == 0 && s != g_current) {
+        const struct screen *from = g_current ? g_current : g_last_known;
+        return from && strcmp(from->id, "coopwifi") == 0;
+    }
     if (!s->after_count || s == g_current) {
         return 1;
     }

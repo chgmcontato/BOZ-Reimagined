@@ -35,6 +35,8 @@ enum target_kind {
     T_CHAR,
     T_MAP,
     T_START,
+    T_FPS,
+    T_LOW_FPS,
 };
 
 struct button {
@@ -112,6 +114,7 @@ static const char *const k_map_names[4] = {"KINO DER TOTEN", "DEAD OPS ARCADE", 
 static int g_picked_map = 1, g_picked_char, g_carousel_at = -1;
 static bool g_map_busy, g_map_failed, g_launching;
 static bool g_start_requested;
+static int g_start_retries;
 static int g_home_misses;
 static uint64_t g_map_deadline, g_arrow_tap_at, g_next_step, g_apply_char_at, g_start_at,
     g_launch_until;
@@ -558,7 +561,9 @@ static void draw_tile(const struct button *b, bool primary_red) {
     } else {
         snprintf(title, sizeof(title), "%s", b->title);
     }
-    kit_panel(b->x, b->y, b->w, b->h, tile_art(b), title, b->caption, false, false);
+    extern bool reimagined_rejoin_available(void);
+    bool off = strcmp(b->id, "rejoin") == 0 && !reimagined_rejoin_available();
+    kit_panel(b->x, b->y, b->w, b->h, tile_art(b), title, off ? "NO SESSION TO RE-JOIN" : b->caption, false, off);
 }
 
 /* ---- targets and focus ---- */
@@ -589,6 +594,8 @@ static bool coop_native_pause(const char *id) {
     return id && screens_coop_session() && (strcmp(id, "pause") == 0 || strcmp(id, "pausecoop") == 0);
 }
 
+enum { FPS_PLATE_X = 610, FPS_PLATE_Y = 190, FPS_PLATE_W = 470, FPS_PLATE_H = 50 };
+
 static const struct button *coop_timer_button(const struct style *s);
 static void coop_timer_bounds(struct button *b);
 
@@ -597,8 +604,12 @@ static float k_chars_hit_h(int i);
 static void map_panel_rect(int i, float *x, float *y, float *w, float *h);
 
 static void add_buttons(const struct button *buttons, int count) {
+    extern bool reimagined_rejoin_available(void);
     for (int i = 0; i < count; ++i) {
         const struct button *b = &buttons[i];
+        if (strcmp(b->id, "rejoin") == 0 && !reimagined_rejoin_available()) {
+            continue; /* nothing to re-join: neither the mouse nor the focus can land on it */
+        }
         enum target_kind kind = strcmp(b->to, "name") == 0 ? T_NAME : b->timer ? T_TIMER : T_TAP;
         float tx = b->has_tap ? b->tx : b->x + b->w / 2, ty = b->has_tap ? b->ty : b->y + b->h / 2;
         add_target(b->x, b->y, b->w, b->h, tx, ty, kind, i, b->to, b->to_game);
@@ -638,6 +649,10 @@ static void build_targets(const char *screen) {
     } else if (s && s->page) {
         add_buttons(s->buttons, s->button_count);
     } else {
+        if (strcmp(screen, "pausesettings") == 0) {
+            add_target(FPS_PLATE_X, FPS_PLATE_Y, FPS_PLATE_W, FPS_PLATE_H, 0, 0, T_FPS, 0, "", false);
+            add_target(FPS_PLATE_X, FPS_PLATE_Y + FPS_PLATE_H + 8, FPS_PLATE_W, FPS_PLATE_H, 0, 0, T_LOW_FPS, 0, "", false);
+        }
         int count;
         const struct screen_item *items = screens_items(screen, &count);
         for (int i = 0; i < count; ++i) {
@@ -879,8 +894,31 @@ static void draw_page(const struct style *s, const char *id) {
 }
 
 /* The game's own page stays: it is the reference. Only the shared footer goes on top. */
+static void draw_fps_plates(void) {
+    char line[48], value[16];
+    int y = FPS_PLATE_Y;
+    if (g_opt.fps_limit > 0) {
+        snprintf(value, sizeof(value), "%d", g_opt.fps_limit);
+    } else {
+        snprintf(value, sizeof(value), "UNLIMITED");
+    }
+    snprintf(line, sizeof(line), "FPS LIMIT: %s", value);
+    kit_panel(FPS_PLATE_X, y, FPS_PLATE_W, FPS_PLATE_H, NULL, line, "", false, false);
+    y += FPS_PLATE_H + 8;
+    if (g_opt.low_fps_paused > 0) {
+        snprintf(value, sizeof(value), "%d", g_opt.low_fps_paused);
+    } else {
+        snprintf(value, sizeof(value), "OFF");
+    }
+    snprintf(line, sizeof(line), "LOW FPS WHILE MATCH PAUSED: %s", value);
+    kit_panel(FPS_PLATE_X, y, FPS_PLATE_W, FPS_PLATE_H, NULL, line, "", false, false);
+}
+
 static void draw_frame(const struct style *s) {
     (void)s;
+    if (screens_is("pausesettings")) {
+        draw_fps_plates();
+    }
     hint(hint_select_back(), false);
 }
 
@@ -1019,7 +1057,15 @@ static void selection_step(void) {
         }
     }
     if (g_launching && now > g_launch_until) {
-        g_launching = false;
+        /* still on this page: the game missed the touch (it ignores them while animating) */
+        if (g_start_retries < 2 && !input_tap_busy()) {
+            g_start_retries++;
+            log_info("menus: START not taken, trying again");
+            input_tap(980, 630);
+            g_launch_until = now + 1800;
+        } else if (g_start_retries >= 2) {
+            g_launching = false;
+        }
     }
     if (!g_map_busy || now < g_next_step || input_tap_busy()) {
         return;
@@ -1088,6 +1134,7 @@ static void start_selected(void) {
     }
     g_start_requested = false;
     g_launching = true;
+    g_start_retries = 0;
     g_apply_char_at = 0;
     apply_character();
     g_start_at = monotonic_ms() + 300;
@@ -1115,6 +1162,10 @@ void menus_frame(void) {
     }
     bool left_menus = !screen && match_active && g_prev_screen;
     bool changed = note_screen(screen, match_active);
+    if (changed) {
+        extern bool reimagined_rejoin_available(void);
+        log_debug("rejoin flag on %s: %d", screen, reimagined_rejoin_available());
+    }
     if (changed && strcmp(screen, "charselect") == 0) {
         g_carousel_at = -1;
         g_map_failed = false;
@@ -1212,6 +1263,23 @@ static void activate(int index) {
     case T_TIMER:
         reimagined_toggle_timer();
         break;
+    case T_FPS: {
+        static const int limits[6] = {5, 15, 30, 60, 120, 0};
+        int at = 3;
+        for (int i = 0; i < 6; ++i) {
+            if (limits[i] == g_opt.fps_limit) {
+                at = i;
+            }
+        }
+        g_opt.fps_limit = limits[(at + 1) % 6];
+        settings_save();
+        log_info("fps limit: %d", g_opt.fps_limit);
+        break;
+    }
+    case T_LOW_FPS:
+        g_opt.low_fps_paused = g_opt.low_fps_paused == 0 ? 5 : g_opt.low_fps_paused == 5 ? 15 : 0;
+        settings_save();
+        break;
     case T_CHAR:
         if (g_picked_map != 2) {
             g_picked_char = t.index;
@@ -1261,7 +1329,10 @@ bool menus_pointer_passthrough(float x, float y) {
     const struct style *s = style_of(screen);
     bool drawn = strncmp(screen, "title", 5) == 0 || strcmp(screen, "main") == 0 ||
                  strcmp(screen, "charselect") == 0 || (s && s->page);
-    if (!drawn) return true;
+    if (!drawn) {
+        return !(strcmp(screen, "pausesettings") == 0 && x >= FPS_PLATE_X && x < FPS_PLATE_X + FPS_PLATE_W &&
+                 y >= FPS_PLATE_Y && y < FPS_PLATE_Y + 2 * FPS_PLATE_H + 8);
+    }
     return s && s->has_window && x >= s->window[0] && x < s->window[0] + s->window[2] &&
            y >= s->window[1] && y < s->window[1] + s->window[3];
 }
@@ -1303,6 +1374,11 @@ bool menus_click(float x, float y) {
     const struct style *s = style_of(screen);
     bool drawn = strcmp(screen, "main") == 0 || strcmp(screen, "charselect") == 0 || (s && s->page);
     if (!drawn) {
+        int plate = target_at(x, y);
+        if (plate >= 0 && (g_targets[plate].kind == T_FPS || g_targets[plate].kind == T_LOW_FPS)) {
+            activate(plate);
+            return true;
+        }
         return false; /* frame-only screens: the Flash menu takes the click */
     }
     int hit = target_at(x, y);
