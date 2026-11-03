@@ -66,6 +66,12 @@ jobs:
           "$LLVM/llvm-nm" -D --defined-only x/lib/arm64-v8a/libmain.so \
             | grep -E " SDL_main$| Java_com_carlos_boz_mobile_BozActivity_nativeSetLogFile$"
           "$BT/aapt2" dump badging "$APK" | grep -E "^package|sdkVersion|targetSdk|native-code|uses-gl-es"
+          echo "== every entry of the APK (no game data may be inside)"
+          unzip -Z1 "$APK" | sort | tee entries.txt
+          if grep -E -i '^assets/|\.(s3e|dz|i3d|bin|swf|mp3|ogg|wav|obb|icf|ipa|apk)$' entries.txt; then
+            echo "game data or archives found in the APK"; exit 1
+          fi
+          echo "no game data: $(wc -l < entries.txt) entries, code, resources and native libraries only"
 
       - uses: actions/upload-artifact@v4
         with:
