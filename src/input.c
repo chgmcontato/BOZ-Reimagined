@@ -986,10 +986,6 @@ static void touch_finger(int64_t id, int phase, float x, float y) {
         g_touch_hidden = false;
     }
     touch_controls_finger(id, phase, x, y);
-    if (touch_controls_take_fps()) {
-        g_opt.show_fps = !g_opt.show_fps;
-        settings_save();
-    }
     /* Dead Ops draws its own pause icon on the other side */
     bool deadops_pause = phase == TOUCH_DOWN && reimagined_deadops() && x > 1170 && y < 100;
     if (touch_controls_take_pause() || deadops_pause) {

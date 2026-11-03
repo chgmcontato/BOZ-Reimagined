@@ -21,7 +21,6 @@ enum {
     ROLE_LOOK,
     ROLE_BUTTON,
     ROLE_PAUSE,
-    ROLE_FPS,
 };
 
 #define STICK_REST_X 210.0f
@@ -31,9 +30,6 @@ enum {
 #define STICK_AREA_RIGHT 560.0f
 #define PAUSE_RIGHT 100.0f
 #define PAUSE_BOTTOM 90.0f
-#define FPS_X 640.0f
-#define FPS_Y 34.0f
-#define FPS_R 30.0f
 #define SPRINT_ON 0.92f
 #define SPRINT_OFF 0.75f
 
@@ -66,7 +62,7 @@ static struct finger {
 static float g_stick_x = STICK_REST_X, g_stick_y = STICK_REST_Y, g_knob_x, g_knob_y;
 static bool g_stick_held;
 static float g_look_dx, g_look_dy;
-static bool g_pause_pending, g_fps_pending, g_sprint;
+static bool g_pause_pending, g_sprint;
 
 static int button_at(float x, float y) {
     int best = -1;
@@ -115,10 +111,7 @@ static void finger_down(int64_t id, float x, float y) {
     f->x = x;
     f->y = y;
     int button = button_at(x, y);
-    if (fabsf(x - FPS_X) < FPS_R * 1.3f && fabsf(y - FPS_Y) < FPS_R * 1.3f) {
-        f->role = ROLE_FPS;
-        g_fps_pending = true;
-    } else if (x < PAUSE_RIGHT && y < PAUSE_BOTTOM) {
+    if (x < PAUSE_RIGHT && y < PAUSE_BOTTOM) {
         f->role = ROLE_PAUSE;
         g_pause_pending = true;
     } else if (button >= 0) {
@@ -170,7 +163,7 @@ void touch_controls_reset(void) {
     g_stick_x = STICK_REST_X;
     g_stick_y = STICK_REST_Y;
     g_look_dx = g_look_dy = 0;
-    g_pause_pending = g_fps_pending = g_sprint = false;
+    g_pause_pending = g_sprint = false;
 }
 
 void touch_controls_move(float *x, float *y) {
@@ -200,12 +193,6 @@ void touch_controls_take_look(float *dx, float *dy) {
 bool touch_controls_take_pause(void) {
     bool pending = g_pause_pending;
     g_pause_pending = false;
-    return pending;
-}
-
-bool touch_controls_take_fps(void) {
-    bool pending = g_fps_pending;
-    g_fps_pending = false;
     return pending;
 }
 
@@ -246,6 +233,4 @@ void touch_controls_draw(void) {
         ui_text(b->label, b->x, b->y + 7, b->r > 80 ? 26 : 19, 0xe0ffffffu, UI_CENTER);
     }
     /* the pause icon is the game's own: only its touch area is here */
-    ui_circle(FPS_X, FPS_Y, FPS_R, 0x60000000u);
-    ui_text("FPS", FPS_X, FPS_Y + 7, 19, 0xe0ffffffu, UI_CENTER);
 }

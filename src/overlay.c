@@ -103,7 +103,11 @@ void overlay_draw(int width, int height) {
     if (g_opt.show_fps) {
         char text[32];
         snprintf(text, sizeof(text), "FPS %d", g_fps_value);
+#ifdef CODBOZ_GLES
+        ui_text(text, 640, 30, 22, 0xfff5c518u, UI_CENTER); /* the footer has the menus' hints */
+#else
         ui_text(text, 640, 712, 22, 0xfff5c518u, UI_CENTER);
+#endif
     }
     ui_end();
 }

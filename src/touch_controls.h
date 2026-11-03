@@ -13,7 +13,6 @@ void touch_controls_reset(void);
 void touch_controls_move(float *x, float *y);
 void touch_controls_take_look(float *dx, float *dy);
 bool touch_controls_take_pause(void);
-bool touch_controls_take_fps(void);
 /* the joystick is pushed to its edge: hold the sprint key */
 bool touch_controls_sprint(void);
 /* enum bind_action */

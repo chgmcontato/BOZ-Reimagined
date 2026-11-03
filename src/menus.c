@@ -43,6 +43,9 @@ enum target_kind {
     T_TAP,
     T_NAME,
     T_TIMER,
+#ifdef CODBOZ_GLES
+    T_SHOW_FPS,
+#endif
     T_CHAR,
     T_MAP,
     T_START,
@@ -54,6 +57,9 @@ struct button {
     char id[16], title[40], caption[48], to[24];
     float x, y, w, h, tx, ty;
     bool primary, has_tap, to_game, selection, timer;
+#ifdef CODBOZ_GLES
+    bool fps;
+#endif
     struct ui_image *art;
 };
 
@@ -220,6 +226,9 @@ static void parse_button(const cJSON *o, struct button *b) {
     b->to_game = strcmp(action, "game") == 0;
     b->selection = strcmp(action, "selection") == 0;
     b->timer = strcmp(action, "timer") == 0;
+#ifdef CODBOZ_GLES
+    b->fps = strcmp(action, "fps") == 0;
+#endif
     const char *a = str(o, "art", NULL);
     b->art = a ? art(a) : NULL;
 }
@@ -610,6 +619,10 @@ static void draw_tile(const struct button *b, bool primary_red) {
     if (b->timer) {
         extern bool reimagined_timer_shown(void);
         snprintf(title, sizeof(title), "TIMER: %s", reimagined_timer_shown() ? "ON" : "OFF");
+#ifdef CODBOZ_GLES
+    } else if (b->fps) {
+        snprintf(title, sizeof(title), "FPS: %s", g_opt.show_fps ? "ON" : "OFF");
+#endif
     } else if (strcmp(b->to, "name") == 0) {
         snprintf(title, sizeof(title), "PLAYER: %s", host_player_name());
     } else {
@@ -670,6 +683,11 @@ static void add_buttons(const struct button *buttons, int count) {
             continue; /* nothing to re-join: neither the mouse nor the focus can land on it */
         }
         enum target_kind kind = strcmp(b->to, "name") == 0 ? T_NAME : b->timer ? T_TIMER : T_TAP;
+#ifdef CODBOZ_GLES
+        if (b->fps) {
+            kind = T_SHOW_FPS;
+        }
+#endif
         float tx = b->has_tap ? b->tx : b->x + b->w / 2, ty = b->has_tap ? b->ty : b->y + b->h / 2;
         add_target(b->x, b->y, b->w, b->h, tx, ty, kind, i, b->to, b->to_game);
     }
@@ -1332,6 +1350,12 @@ static void activate(int index) {
     case T_TIMER:
         reimagined_toggle_timer();
         break;
+#ifdef CODBOZ_GLES
+    case T_SHOW_FPS:
+        g_opt.show_fps = !g_opt.show_fps;
+        settings_save();
+        break;
+#endif
     case T_FPS: {
         static const int limits[6] = {5, 15, 30, 60, 120, 0};
         int at = 3;
