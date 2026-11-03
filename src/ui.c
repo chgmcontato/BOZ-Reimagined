@@ -89,6 +89,10 @@ static const char *const k_system_fonts[] = {
     "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
     "C:/Windows/Fonts/arialbd.ttf",
+#ifdef __ANDROID__
+    "/system/fonts/Roboto-Bold.ttf",
+    "/system/fonts/DroidSans-Bold.ttf",
+#endif
     NULL,
 };
 
@@ -185,8 +189,32 @@ static uint32_t make_texture(int w, int h, uint32_t format, const void *pixels) 
     /* mipmapped: text and art are drawn well below their baked size */
     gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MIN_FILTER_, 0x2703); /* LINEAR_MIPMAP_LINEAR */
     gl.TexParameteri(GL_TEXTURE_2D_, GL_TEXTURE_MAG_FILTER_, GL_LINEAR_);
+#ifdef CODBOZ_GLES
+    /* OpenGL ES: no GENERATE_MIPMAP parameter, and the shader that stands in for the fixed
+     * pipeline modulates all four channels, so an ALPHA atlas becomes white RGBA. */
+    uint8_t *expanded = NULL;
+    if (format == GL_ALPHA_) {
+        expanded = malloc((size_t)w * (size_t)h * 4u);
+        if (expanded) {
+            const uint8_t *a = pixels;
+            for (size_t i = 0; i < (size_t)w * (size_t)h; ++i) {
+                expanded[i * 4] = expanded[i * 4 + 1] = expanded[i * 4 + 2] = 255;
+                expanded[i * 4 + 3] = a[i];
+            }
+            pixels = expanded;
+            format = GL_RGBA_;
+        }
+    }
+    gl.TexImage2D(GL_TEXTURE_2D_, 0, (int)format, w, h, 0, format, GL_UNSIGNED_BYTE_, pixels);
+    free(expanded);
+    {
+        void (*generate_mipmap)(uint32_t) = gl_proc("glGenerateMipmap");
+        generate_mipmap(GL_TEXTURE_2D_);
+    }
+#else
     gl.TexParameteri(GL_TEXTURE_2D_, 0x8191, 1);                       /* GENERATE_MIPMAP */
     gl.TexImage2D(GL_TEXTURE_2D_, 0, (int)format, w, h, 0, format, GL_UNSIGNED_BYTE_, pixels);
+#endif
     gl.BindTexture(GL_TEXTURE_2D_, (uint32_t)prev);
     return tex;
 }

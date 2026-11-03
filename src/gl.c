@@ -106,6 +106,14 @@ static void gl_missing(void) {
 }
 
 void *gl_proc(const char *name) {
+#ifdef CODBOZ_GLES
+    /* desktop-only calls of the runtime's own drawing (ui.c), emulated on OpenGL ES 3 */
+    extern void *gles_compat_proc(const char *name);
+    void *compat = gles_compat_proc(name);
+    if (compat) {
+        return compat;
+    }
+#endif
     void *fn = SDL_GL_GetProcAddress(name);
     if (!fn) {
         char alt[128];
@@ -125,9 +133,18 @@ bool video_init(void) {
         log_error("SDL video: %s", SDL_GetError());
         return false;
     }
+#ifdef CODBOZ_GLES
+    /* Android: a real OpenGL ES context. ES 3.0 runs the game's ES 2.0 calls and shaders as they
+     * are, and adds what the runtime's 1280x720 surface needs (RGBA8 / DEPTH24_STENCIL8
+     * renderbuffers, glBlitFramebuffer). */
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#endif
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
@@ -140,8 +157,12 @@ bool video_init(void) {
     uint32_t flags = SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI |
                      (getenv("CODBOZ_HIDDEN") ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN);
     int width = g_opt.width, height = g_opt.height;
+#ifdef __ANDROID__
+    flags |= SDL_WINDOW_FULLSCREEN; /* the activity's whole surface */
+#else
     /* the launcher runs in a window; video_enter_game() goes fullscreen */
     flags |= SDL_WINDOW_RESIZABLE;
+#endif
     g_window = SDL_CreateWindow("Call of Duty: Black Ops Zombies", SDL_WINDOWPOS_CENTERED,
                                 SDL_WINDOWPOS_CENTERED, width, height, flags);
     if (!g_window) {
@@ -935,9 +956,11 @@ IMPORT(glTexImage2D) {
             break;
         }
     }
+#ifndef CODBOZ_GLES /* OpenGL ES takes BGRA_EXT/BGRA_EXT as the game sends it */
     if (internal == 0x80e1 /* GL_BGRA_EXT */) {
         internal = 0x8058; /* GL_RGBA8 */
     }
+#endif
     glTexImage2D(arg(0), (int32_t)arg(1), internal, (int32_t)arg(3), (int32_t)arg(4), (int32_t)arg(5),
                  format, type, G2H(arg(8)));
 }
@@ -1000,6 +1023,23 @@ IMPORT(glShaderSource) {
     if (count <= 0) {
         return;
     }
+#ifdef CODBOZ_GLES
+    /* OpenGL ES: the game's GLSL ES 1.00 as is; only the guest pointers are translated. */
+    {
+        const char *host_strings[64];
+        int32_t host_lengths[64];
+        if (count > 64) {
+            log_error("glShaderSource with %d strings", (int)count);
+            count = 64;
+        }
+        for (int32_t i = 0; i < count; ++i) {
+            host_strings[i] = G2H(strings[i]);
+            host_lengths[i] = lengths ? lengths[i] : -1;
+        }
+        glShaderSource(arg(0), count, host_strings, host_lengths);
+        return;
+    }
+#endif
     /* GLSL ES 1.00 -> desktop GLSL 1.20: one buffer, precision statements dropped. */
     static const char prelude[] = "#version 120\n#define lowp\n#define mediump\n#define highp\n";
     size_t total = sizeof(prelude);
