@@ -12,6 +12,8 @@
 #include "screens.h"
 #include "ui.h"
 
+#include "menus_layout.h"
+
 #include "../third_party/cJSON.h"
 
 #include <SDL.h>
@@ -249,6 +251,12 @@ static void define_coop_pages(void) {
             s->window[1] = 140;
             s->window[2] = 700;
             s->window[3] = 390;
+        } else if (strcmp(s->id, "pause") == 0) {
+            /* pause_solo.psd: a wider opening for the native card */
+            s->window[0] = 196;
+            s->window[1] = 272;
+            s->window[2] = 646;
+            s->window[3] = 228;
         } else if (strcmp(s->id, "coopwifi") == 0) {
             s->page = true;
             s->has_tag = false;
@@ -360,6 +368,38 @@ static void text(const char *s, float x, float baseline, float size, uint32_t co
     }
 }
 
+/* Text placed by hand in the PSDs: k_layout holds its offset, scale and tilt for this screen. */
+static const char *g_layout_screen = "";
+
+static void placed_text(const char *layer, const char *s, float x, float baseline, float size, uint32_t color,
+                        float max_width, bool outline, enum ui_align align) {
+    const struct layout_adj *adj = NULL;
+    for (size_t i = 0; i < sizeof(k_layout) / sizeof(k_layout[0]); ++i) {
+        if (strcmp(k_layout[i].screen, g_layout_screen) == 0 && strcmp(k_layout[i].layer, layer) == 0) {
+            adj = &k_layout[i];
+            break;
+        }
+    }
+    if (!adj) {
+        text(s, x, baseline, size, color, max_width, outline, align);
+        return;
+    }
+    ui_font(UI_FONT_DISPLAY);
+    float w = ui_text_width(s, size);
+    if (w > max_width && w > 0) {
+        size *= max_width / w;
+        w = max_width;
+    }
+    float left = align == UI_CENTER ? x - w / 2 : align == UI_RIGHT ? x - w : x;
+    float mid = left + w / 2 + adj->dx, base = baseline + adj->dy;
+    /* scaling keeps the same centre */
+    float scaled = size * adj->scale;
+    base += (scaled - size) * 0.35f;
+    ui_rotate_begin(mid, base - scaled * 0.35f, adj->deg);
+    text(s, mid, base, scaled, color, 1e6f, outline, UI_CENTER);
+    ui_rotate_end();
+}
+
 static void comic_pts(float x, float y, float w, float h, float skew, float out[8]) {
     float pts[8] = {x, y + skew, x + w, y, x + w - 3, y + h - skew, x + 2, y + h};
     memcpy(out, pts, sizeof(pts));
@@ -446,11 +486,11 @@ static void kit_sheet(bool body) {
 }
 
 /* title.png's strip fills its top two thirds; the caption is ink, sized to fit inside it. */
-static void kit_strip(float x, float y, float w, const char *title) {
+static void kit_strip(float x, float y, float w, const char *title, const char *layer) {
     float h = w / 4;
     ui_image(&g_strip, x, y, w, h, 1.0f);
     float size = fminf(h * 0.42f, 44);
-    text(title, x + w * 0.09f, y + h * 0.45f, size, INK, w * 0.80f, false, UI_LEFT);
+    placed_text(layer, title, x + w * 0.09f, y + h * 0.45f, size, INK, w * 0.80f, false, UI_LEFT);
 }
 
 static void draw_chrome(void) {
@@ -458,7 +498,7 @@ static void draw_chrome(void) {
 }
 
 static void kit_page_title(const char *title) {
-    kit_strip(60, 8, 520, title);
+    kit_strip(60, 8, 520, title, "title");
     text("BLACK OPS ZOMBIES", 1188, 112, 26, SAND, 560, true, UI_RIGHT);
     text("REIMAGINED", 1188, 152, 38, PAPER, 560, true, UI_RIGHT);
 }
@@ -469,13 +509,17 @@ static void hint(const char *s, bool on_paper) {
     text(s, 640, 711, 18, SAND, 1000, false, UI_CENTER);
 }
 
-static void kit_arrow(bool back, float x, float y, float w, float h, const char *label, bool dim) {
+static void kit_arrow(bool back, float x, float y, float w, float h, const char *label, const char *id, bool dim) {
     const struct ui_image *im = back ? &g_back : &g_start;
     float iw = fminf(w, fmaxf(h * 2.2f, 240)), ih = iw / 2, ix = x + (w - iw) / 2, iy = y + h - ih + 8;
     ui_image(im, ix, iy, iw, ih, dim ? 0.55f : 1.0f);
     float size = fminf(ih * 0.36f, 38);
-    text(label, ix + iw * (back ? 0.56f : 0.46f), iy + ih * 0.48f, size, dim ? 0xffbcb8adu : PAPER, iw * 0.72f, true, UI_CENTER);
+    char layer[32];
+    snprintf(layer, sizeof(layer), "%s label", id);
+    placed_text(layer, label, ix + iw * (back ? 0.56f : 0.46f), iy + ih * 0.48f, size, dim ? 0xffbcb8adu : PAPER, iw * 0.72f, true, UI_CENTER);
 }
+
+static float g_panel_art_side, g_panel_art_top; /* set from a PSD for one panel */
 
 /* A comic panel: art (or plain ink), an outlined caption inside, a thin paper edge. */
 static void kit_panel(float x, float y, float w, float h, const struct ui_image *im, const char *title,
@@ -488,8 +532,9 @@ static void kit_panel(float x, float y, float w, float h, const struct ui_image 
     ui_rect(x, y, w, h, 0xff151211u);
     if (im && im->tex) {
         if (im->w == im->h) { /* round map art: whole, centred on the panel, never cropped */
-            float side = fmaxf(w, h) * 0.86f;
-            ui_image(im, x + (w - side) / 2, y + (h - side) * 0.35f, side, side, 1.0f);
+            float side = g_panel_art_side > 0 ? g_panel_art_side : fmaxf(w, h) * 0.86f;
+            float top = g_panel_art_side > 0 ? g_panel_art_top : y + (h - side) * 0.35f;
+            ui_image(im, x + (w - side) / 2, top, side, side, 1.0f);
         } else {
             ui_image_cover(im, x, y, w, h, 1.0f);
         }
@@ -545,11 +590,11 @@ static void draw_tile(const struct button *b, bool primary_red) {
     (void)primary_red;
     if (strcmp(b->id, "back") == 0 || strcmp(b->id, "no") == 0 || strcmp(b->id, "quit") == 0 ||
         strcmp(b->id, "return") == 0) {
-        kit_arrow(true, b->x, b->y, b->w, b->h, b->title, false);
+        kit_arrow(true, b->x, b->y, b->w, b->h, b->title, b->id, false);
         return;
     }
     if (strcmp(b->id, "ok") == 0 || strcmp(b->id, "yes") == 0 || strcmp(b->id, "retry") == 0) {
-        kit_arrow(false, b->x, b->y, b->w, b->h, b->title, false);
+        kit_arrow(false, b->x, b->y, b->w, b->h, b->title, b->id, false);
         return;
     }
     char title[64];
@@ -563,7 +608,12 @@ static void draw_tile(const struct button *b, bool primary_red) {
     }
     extern bool reimagined_rejoin_available(void);
     bool off = strcmp(b->id, "rejoin") == 0 && !reimagined_rejoin_available();
+    if (strcmp(b->id, "profile") == 0) { /* main.psd: the terminal fills the panel to its top */
+        g_panel_art_side = 357;
+        g_panel_art_top = 168;
+    }
     kit_panel(b->x, b->y, b->w, b->h, tile_art(b), title, off ? "NO SESSION TO RE-JOIN" : b->caption, false, off);
+    g_panel_art_side = 0;
 }
 
 /* ---- targets and focus ---- */
@@ -956,8 +1006,12 @@ static void draw_charselect(void) {
     for (int i = 0; i < 4; ++i) {
         const struct char_slot *c = &k_chars[i];
         uint32_t color = arcade ? 0xffaaa69du : g_picked_char == i ? 0xfff5c518u : PAPER;
-        text(names[i][0], c->name_x, c->name_y, 23, color, 170, true, UI_LEFT);
-        text(names[i][1], c->name_x, c->name_y + 25, 23, color, 170, true, UI_LEFT);
+        static const char *const ids[4] = {"nikolai", "takeo", "richtofen", "dempsey"};
+        char layer[32];
+        snprintf(layer, sizeof(layer), "%s name 1", ids[i]);
+        placed_text(layer, names[i][0], c->name_x, c->name_y, 23, color, 170, true, UI_LEFT);
+        snprintf(layer, sizeof(layer), "%s name 2", ids[i]);
+        placed_text(layer, names[i][1], c->name_x, c->name_y + 25, 23, color, 170, true, UI_LEFT);
         if (g_picked_char == i && !arcade) {
             ui_image(&g_tick, c->name_x + 112, c->name_y - 2, 38, 38, 1.0f);
         }
@@ -970,11 +1024,11 @@ static void draw_charselect(void) {
             ui_image(&g_tick, x + w - 52, y + 10, 42, 42, 1.0f);
         }
     }
-    kit_strip(58, 4, 470, "SELECT CHARACTER");
-    kit_strip(700, 2, 400, "SELECT MAP");
+    kit_strip(58, 4, 470, "SELECT CHARACTER", "character title");
+    kit_strip(700, 2, 400, "SELECT MAP", "map title");
     bool blocked = g_map_busy || g_map_failed || g_launching;
-    kit_arrow(true, 76, 548, 240, 116, "BACK", false);
-    kit_arrow(false, 960, 548, 240, 116, "START", blocked);
+    kit_arrow(true, 76, 548, 240, 116, "BACK", "back", false);
+    kit_arrow(false, 960, 548, 240, 116, "START", "start", blocked);
     const char *status = g_launching ? "STARTING GAME..." : g_map_failed ? "SELECT THE MAP AGAIN"
                          : g_map_busy ? "PREPARING MAP..." : arcade ? "ARCADE SQUAD" : "READY TO SURVIVE!";
     text(status, 640, 590, 38, PAPER, 560, true, UI_CENTER);
@@ -990,7 +1044,8 @@ static void draw_name_editor(void) {
     comic_pts(290, 230, 700, 250, 7, pts);
     ui_quad(pts, 0xff0d0c0bu);
     comic_outline(pts);
-    kit_strip(310, 196, 420, "PLAYER NAME");
+    g_layout_screen = "name_editor";
+    kit_strip(310, 196, 420, "PLAYER NAME", "title");
     char shown[24];
     snprintf(shown, sizeof(shown), "%s%s", g_name, (monotonic_ms() / 450) % 2 ? "_" : "");
     ui_rect(320, 320, 640, 70, 0xff231d1bu);
@@ -1223,6 +1278,7 @@ void menus_draw(void) {
         return;
     }
     g_drawn_screen = screen;
+    g_layout_screen = strcmp(screen, "pause") == 0 ? "pause_solo" : screen;
     const struct style *s = style_of(screen);
     if (strncmp(screen, "title", 5) == 0) {
         draw_title();

@@ -55,6 +55,10 @@ void ui_mask_begin(void);
 void ui_mask_use(bool inside);
 void ui_mask_end(void);
 
+/* Rotates what is drawn until ui_rotate_end around a reference-space point. */
+void ui_rotate_begin(float cx, float cy, float degrees);
+void ui_rotate_end(void);
+
 /* Window pixels -> reference space (for mouse hit testing). */
 void ui_window_to_ref(int wx, int wy, float *rx, float *ry);
 float ui_scale(void);
