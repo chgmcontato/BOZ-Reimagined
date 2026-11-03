@@ -35,10 +35,12 @@ echo "== runtime log file"
 FILES="/sdcard/Android/data/$PKG/files"
 "${ADB[@]}" pull "$FILES/boz-runtime.log" "$OUT/" 2>/dev/null \
     || echo "(boz-runtime.log not readable over adb on this Android; logcat-boz.txt has the same lines)"
+"${ADB[@]}" pull "$FILES/game/shader-dump" "$OUT/" 2>/dev/null \
+    || echo "(shader-dump not readable over adb; the log names each shader's hash)"
 "${ADB[@]}" shell ls -la "$FILES" "$FILES/game" "$FILES/import" > "$OUT/files.txt" 2>&1 || true
 
 echo "== summary"
-grep -h -E "memory:|guest address space|dynarmic:|OpenGL|game requested|mode |boz.s3e mapped|error|Fatal|SIGSEGV|SIGABRT|main returned" \
+grep -h -E "shader |GL debug|memory:|guest address space|dynarmic:|OpenGL|game requested|mode |boz.s3e mapped|error|Fatal|SIGSEGV|SIGABRT|main returned" \
     "$OUT/logcat-boz.txt" "$OUT/logcat-crash.txt" 2>/dev/null | head -60 || true
 
 tar czf "$OUT.tar.gz" "$OUT"

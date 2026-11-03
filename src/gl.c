@@ -63,7 +63,13 @@ enum {
 };
 
 #ifdef CODBOZ_GLES
+#include "gles_shader.h"
+#ifndef GLAPIENTRY_DEBUG
+#define GLAPIENTRY_DEBUG
+#endif
 static void report_gl_errors(void);
+static void gl_debug_enable(void);
+static unsigned g_gl_frame;
 #endif
 
 /* Opaque EGL handles: guest-visible tokens. */
@@ -188,6 +194,9 @@ bool video_init(void) {
     }
     SDL_GL_MakeCurrent(g_window, g_context);
     configure_swap_interval();
+#ifdef CODBOZ_GLES
+    gl_debug_enable();
+#endif
     {
         int32_t units = 0, attributes = 0;
         void (*get_integer)(uint32_t, int32_t *) = gl_proc("glGetIntegerv");
@@ -510,10 +519,22 @@ void video_debug_capture(void) {
     GLFN(void, glBindFramebuffer, uint32_t, uint32_t);
     GLFN(void, glPixelStorei, uint32_t, int32_t);
     int ww = g_win_w, wh = g_win_h;
+#ifdef CODBOZ_GLES
+    uint8_t *pixels = malloc((size_t)ww * wh * 4);
+#else
     uint8_t *pixels = malloc((size_t)ww * wh * 3);
+#endif
     glBindFramebuffer(0x8d40, 0);
     glPixelStorei(0x0d05, 1); /* GL_PACK_ALIGNMENT */
+#ifdef CODBOZ_GLES
+    /* ES only guarantees RGBA/UNSIGNED_BYTE here */
+    glReadPixels(0, 0, ww, wh, 0x1908, 0x1401, pixels);
+    for (size_t i = 0, count = (size_t)ww * wh; i < count; ++i) {
+        memmove(pixels + i * 3, pixels + i * 4, 3);
+    }
+#else
     glReadPixels(0, 0, ww, wh, 0x1907, 0x1401, pixels);
+#endif
     char path[1200];
     if (requested) {
         snprintf(path, sizeof(path), "%s", g_shot_request);
@@ -566,6 +587,7 @@ static void sleep_until(uint64_t *next, uint64_t interval) {
 void video_swap(void) {
 #ifdef CODBOZ_GLES
     report_gl_errors(); /* before the runtime's own drawing: these are the game's */
+    g_gl_frame++;
 #endif
     /* The presentation/HUD code uses native GL directly, outside guest thunks. */
     gl_state_invalidate();
@@ -748,7 +770,13 @@ IMPORT(eglCreateContext) {
             g_es_version = attributes[i * 2 + 1];
         }
     }
+#ifdef CODBOZ_GLES
+    /* Not a real request: the game derives this from s3eGLGetInt(0), which is the surface width
+     * here (1280 = 0x500 -> "5.0"). The context itself comes from video_init(). */
+    log_info("game asked EGL for OpenGL ES %d (derived from s3eGLGetInt(0)); the real context is SDL's", g_es_version);
+#else
     log_info("game requested an OpenGL ES %d context", g_es_version);
+#endif
     ret(g_egl_context);
 }
 
@@ -1022,6 +1050,88 @@ IMPORT(glCompressedTexSubImage2D) {
                               (int32_t)arg(4), (int32_t)arg(5), format, (int32_t)arg(7), G2H(arg(8)));
 }
 
+#ifdef CODBOZ_GLES
+/* What each shader object last received, to name its file when the driver refuses it. */
+static struct {
+    uint32_t shader;
+    uint64_t hash;
+} g_shader_sources[1024];
+
+static void shader_note_source(uint32_t shader, int32_t count, const char *text, size_t size) {
+    char dir[1100], path[1200];
+    uint64_t hash = gles_shader_hash(text, size);
+    unsigned lines = 1;
+    for (size_t i = 0; i < size; ++i) {
+        lines += text[i] == '\n';
+    }
+    snprintf(dir, sizeof(dir), "%s/shader-dump", g_data_root);
+    int saved = gles_shader_dump(dir, hash, text, size, path, sizeof(path));
+    g_shader_sources[shader % 1024].shader = shader;
+    g_shader_sources[shader % 1024].hash = hash;
+    log_info("shader %u source: %d strings, %zu bytes, %u lines, hash %016llx, %s", shader, (int)count,
+             size, lines, (unsigned long long)hash, saved ? path : "not saved (dump limit or I/O)");
+}
+
+static void shader_log_failed_source(uint32_t shader) {
+    if (g_shader_sources[shader % 1024].shader == shader) {
+        log_error("shader %u failed; driver text: %s/shader-dump/%016llx.glsl", shader, g_data_root,
+                  (unsigned long long)g_shader_sources[shader % 1024].hash);
+    }
+}
+
+/* GL errors with the driver's reason and the guest call that was running. */
+static void GLAPIENTRY_DEBUG gl_debug_message(uint32_t source, uint32_t type, uint32_t id, uint32_t severity,
+                                              int32_t length, const char *message, const void *user) {
+    (void)source; (void)severity; (void)length; (void)user;
+    enum { GL_DEBUG_TYPE_ERROR_ = 0x824c, DISTINCT = 64 };
+    static struct {
+        const char *import;
+        uint32_t id;
+        unsigned hash;
+    } seen[DISTINCT];
+    static int seen_count;
+    if (type != GL_DEBUG_TYPE_ERROR_) {
+        return;
+    }
+    const char *import = current_import();
+    unsigned hash = 2166136261u;
+    for (const char *c = message; *c; ++c) {
+        hash = (hash ^ (uint8_t)*c) * 16777619u;
+    }
+    for (int i = 0; i < seen_count; ++i) {
+        if (seen[i].import == import && seen[i].id == id && seen[i].hash == hash) {
+            return;
+        }
+    }
+    if (seen_count == DISTINCT) {
+        return;
+    }
+    seen[seen_count].import = import;
+    seen[seen_count].id = id;
+    seen[seen_count].hash = hash;
+    seen_count++;
+    log_error("GL debug: in %s, frame %u: %s", import ? import : "runtime drawing", g_gl_frame, message);
+    if (seen_count == DISTINCT) {
+        log_info("GL debug: 64 distinct errors reported, no more");
+    }
+}
+
+static void gl_debug_enable(void) {
+    GLFN(void, glDebugMessageCallback, void (*)(uint32_t, uint32_t, uint32_t, uint32_t, int32_t, const char *, const void *), const void *);
+    GLFN(void, glEnable, uint32_t);
+    GLFN(uint32_t, glGetError, void);
+    if ((void *)glDebugMessageCallback == (void *)gl_missing) {
+        log_info("GL debug: glDebugMessageCallback is unavailable");
+        return;
+    }
+    glEnable(0x92e0); /* GL_DEBUG_OUTPUT */
+    glEnable(0x8242); /* GL_DEBUG_OUTPUT_SYNCHRONOUS: current_import() is the caller */
+    glDebugMessageCallback(gl_debug_message, NULL);
+    uint32_t error = glGetError();
+    log_info("GL debug: callback on%s", error ? " (glEnable reported an error)" : "");
+}
+#endif
+
 IMPORT(glShaderSource) {
     GLFN(void, glShaderSource, uint32_t, int32_t, const char *const *, const int32_t *);
     int32_t count = (int32_t)arg(1);
@@ -1031,19 +1141,26 @@ IMPORT(glShaderSource) {
         return;
     }
 #ifdef CODBOZ_GLES
-    /* OpenGL ES: the game's GLSL ES 1.00 as is; only the guest pointers are translated. */
+    /* OpenGL ES: the game's GLSL ES 1.00 as is. One string per line, so no bound on their number. */
     {
-        const char *host_strings[64];
-        int32_t host_lengths[64];
-        if (count > 64) {
-            log_error("glShaderSource with %d strings", (int)count);
-            count = 64;
+        const char **host_strings = malloc((size_t)count * sizeof(*host_strings));
+        size_t size = 0;
+        char *text = NULL;
+        if (host_strings) {
+            for (int32_t i = 0; i < count; ++i) {
+                host_strings[i] = strings[i] ? G2H(strings[i]) : NULL;
+            }
+            text = gles_shader_join(count, host_strings, lengths, &size);
+            free(host_strings);
         }
-        for (int32_t i = 0; i < count; ++i) {
-            host_strings[i] = G2H(strings[i]);
-            host_lengths[i] = lengths ? lengths[i] : -1;
+        if (!text) {
+            log_error("glShaderSource: shader %u, %d strings could not be assembled", arg(0), (int)count);
+            return;
         }
-        glShaderSource(arg(0), count, host_strings, host_lengths);
+        shader_note_source(arg(0), count, text, size);
+        const char *one = text;
+        glShaderSource(arg(0), 1, &one, NULL);
+        free(text);
         return;
     }
 #endif
@@ -1093,6 +1210,9 @@ IMPORT(glCompileShader) {
         char text[2048] = "";
         glGetShaderInfoLog(arg(0), sizeof(text), NULL, text);
         log_info("shader %u failed to compile: %s", arg(0), text);
+#ifdef CODBOZ_GLES
+        shader_log_failed_source(arg(0));
+#endif
     }
 }
 

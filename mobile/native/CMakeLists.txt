@@ -75,7 +75,7 @@ set(BOZ_SOURCES
     src/launcher.c src/loader.c src/main.c src/mdns_wire.c src/memory.c src/menus.c
     src/overlay.c src/pvrtc.c src/reimagined.c src/runtime.c src/screens.c src/socket.c
     src/timer.c src/ui.c src/updater.c src/zeroconf.c src/zeroconf_platform_posix.c
-    src/coop_stats.c src/gles_compat.c src/emu_dynarmic.cpp
+    src/coop_stats.c src/gles_compat.c src/gles_shader.c src/emu_dynarmic.cpp
     third_party/cJSON.c third_party/LzmaDec.c)
 if(ANDROID)
     list(APPEND BOZ_SOURCES src/platform_android.c)

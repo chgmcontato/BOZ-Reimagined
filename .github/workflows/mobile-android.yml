@@ -10,6 +10,7 @@ on:
       - "mobile/**"
       - "src/**"
       - "third_party/**"
+      - "tools/test_gles_shaders.c"
       - ".github/workflows/mobile-android.yml"
   workflow_dispatch:
 
@@ -25,6 +26,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Shader regression test (Mesa OpenGL ES, no game data)
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libegl1 libgles2 libegl-mesa0 libgl1-mesa-dri
+          gcc -std=gnu11 -Wall -Wextra -Wno-unused-parameter -Isrc tools/test_gles_shaders.c \
+            src/gles_shader.c -ldl -o test_gles_shaders
+          ./test_gles_shaders  # exit 77 (no driver) fails the step on purpose
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -37,9 +48,26 @@ jobs:
           "$SDKM" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
           echo "sdk.dir=$ANDROID_HOME" > mobile/android/local.properties
 
+      - name: Fixed test signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.BOZ_TEST_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::BOZ_TEST_KEYSTORE_B64 is not set: this APK has a throwaway key and will not update over the previous one"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/boz-mobile-test.p12"
+          echo "BOZ_TEST_KEYSTORE=$RUNNER_TEMP/boz-mobile-test.p12" >> "$GITHUB_ENV"
+
       - name: Gradle assembleRelease
         working-directory: mobile/android
+        env:
+          BOZ_TEST_KEYSTORE_PASSWORD: ${{ secrets.BOZ_TEST_KEYSTORE_PASSWORD }}
         run: ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/boz-mobile-test.p12"
 
       - name: Check the APK
         run: |
@@ -72,6 +100,12 @@ jobs:
             echo "game data or archives found in the APK"; exit 1
           fi
           echo "no game data: $(wc -l < entries.txt) entries, code, resources and native libraries only"
+          {
+            echo "### APK"
+            echo "SHA-256: \`$(sha256sum "$APK" | cut -d' ' -f1)\`"
+            echo
+            echo "Signing certificate: \`$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p')\`"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:

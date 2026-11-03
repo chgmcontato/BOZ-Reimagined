@@ -84,8 +84,8 @@ android {
         applicationId = "com.carlos.boz.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1-poc"
+        versionCode = 2
+        versionName = "0.2-poc"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -114,12 +114,28 @@ android {
     sourceSets["main"].java.srcDir(File(sdl2Dir, "android-project/app/src/main/java"))
     sourceSets["main"].res.srcDir(iconRes)
 
+    // A fixed test key keeps updates installable over the previous build, so the imported files
+    // survive. It comes from the environment (repository secrets in CI), never from the repository.
+    // Without it the debug key is used, which differs from machine to machine.
+    val testKeystore = System.getenv("BOZ_TEST_KEYSTORE")
+    val testPassword = System.getenv("BOZ_TEST_KEYSTORE_PASSWORD")
+    signingConfigs {
+        if (!testKeystore.isNullOrEmpty() && !testPassword.isNullOrEmpty()) {
+            create("bozTest") {
+                storeFile = file(testKeystore)
+                storePassword = testPassword
+                keyAlias = "boz-mobile-test"
+                keyPassword = testPassword
+            }
+        }
+    }
+
     buildTypes {
         // The JIT and the runtime are slow at -O0: test with assembleRelease (RelWithDebInfo).
-        // Signed with the debug key so it installs without a keystore; not for distribution.
+        // Not for distribution: either key below is a development key.
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("bozTest") ?: signingConfigs.getByName("debug")
         }
     }
 

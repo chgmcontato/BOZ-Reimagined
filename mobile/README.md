@@ -4,10 +4,10 @@ O runtime do PC (`src/`) compilado para Android ARM64, rodando o **mesmo `boz.s3
 Reimagined TV** no Dynarmic. O objetivo desta etapa é chegar ao menu principal no Galaxy S24 FE.
 Menus touch, HUD de toque, controle e co-op ficam para as etapas seguintes.
 
-> **Estado: IMPLEMENTADO, NÃO VALIDADO NO APARELHO.** O APK não foi compilado neste ambiente:
-> o Android SDK, o NDK e o plugin Android do Gradle vêm de `dl.google.com`, bloqueado aqui. Tudo o
-> que dava para testar sem eles está em [Testes feitos sem o aparelho](#testes-feitos-sem-o-aparelho).
-> A Etapa 2 só fica concluída quando o jogo inicializar no S24 FE.
+> **Estado: Etapa 2 ABERTA.** No S24 FE, o primeiro APK instalou e abriu, mas os shaders falharam
+> (ver [Primeiro boot no S24 FE](#primeiro-boot-no-s24-fe)). A correção chega à partida Solo no Mesa
+> OpenGL ES, mas ainda não foi validada no aparelho. A Etapa 2 só fecha quando o S24 FE mostrar o
+> menu principal e carregar uma partida Solo real.
 
 ## Como está organizado
 
@@ -80,6 +80,55 @@ No primeiro boot, o log mostra o que ocupava os 4 GiB baixos e se algo caía na 
 - SDL2 2.30.9 no Android: `SDLActivity` + `libSDL2.so`. O `main()` do PC vira `boz_main` e roda
   numa thread com 16 MiB de pilha (a `SDLThread` tem a pilha padrão do Java, cerca de 1 MiB).
 
+## Primeiro boot no S24 FE
+
+Log de 2026-11-03 (Android 16, ANGLE sobre Vulkan, Samsung Xclipse 940), confrontado com o código e
+reproduzido no Mesa com os dados reais do jogo.
+
+| Sintoma no log | Causa confirmada |
+|---|---|
+| `glShaderSource with 165 strings`, `'if': unexpected end of file` | O caminho GLES tinha uma tabela fixa de 64 strings. O jogo manda uma string por linha (165 e 182), então o shader chegava cortado dentro de um `#if`. Bug nosso, só do Android: o PC sempre juntou tudo num buffer. O log não aponta para o driver nem para o ANGLE. |
+| `Vertex shader is not compiled` | Consequência direta do corte. |
+| `GL error 0x0502` | No A/B com o corte de volta, o `KHR_debug` aponta `glUseProgram`, `glGetAttribLocation` e `glGetUniformLocation` em programas não vinculados. Sem o corte: nenhum erro desse tipo até a partida, no Mesa. |
+| `glVertexAttribPointer guest/s 0` | O jogo não desenhava com atributos porque não tinha programa válido. Com a correção, cerca de 2000/s. |
+| `game requested an OpenGL ES 5 context` | Inofensivo, igual no PC. O jogo chama `s3eGLGetInt(0)` (em `0x4a2c766c`) e calcula `major = v >> 8`. Este runtime devolve a largura ali: 1280 = `0x500`, logo "5". O valor só alimenta `g_es_version >= 2`; o contexto real é o ES 3 criado pelo SDL. O comportamento foi mantido; agora a linha do log explica isso. |
+
+Os shaders `ReplaceGXShaderVertex` e `ReplaceGXShaderFragment` são do próprio jogo: GLSL ES 1.00, sem
+`#version` nem `#extension`, com o mesmo corpo e `#define`s diferentes por material. Não precisam de
+conversão no ES: vão ao driver como estão, só unidos. O PC continua convertendo para GLSL 1.20.
+
+**Outro erro, não relacionado:** ao entrar na partida, `glCompressedTexImage2D` recusa
+`GL_PALETTE8_RGB5_A1_OES` (`0x8b99`). O formato também aparece no log do PC. Fica registrado para
+investigar; a partida renderiza no Mesa mesmo assim.
+
+**Diagnóstico novo:** cada shader é registrado no log (strings, bytes, linhas, hash) e gravado inteiro
+em `<dados>/shader-dump/<hash>.glsl`. O limite é por arquivos e bytes totais; um shader acima dele não é
+gravado, nunca é cortado. Erros de GL saem na hora com o texto do driver e a chamada do jogo
+(`GL debug: in glUseProgram, frame N: ...`).
+
+## Assinatura de teste
+
+O Android só atualiza um app por cima de outro com a mesma chave. O runner do Actions gera uma chave de
+debug nova a cada execução, por isso cada APK exigia desinstalar, o que apaga o OBB importado.
+
+O workflow aceita uma chave fixa só para testes, nos secrets `BOZ_TEST_KEYSTORE_B64` e
+`BOZ_TEST_KEYSTORE_PASSWORD`. Ela nunca entra no repositório nem no artifact, e o workflow não roda em
+PRs. Sem os secrets, o build avisa e usa uma chave descartável. Para criar (uma vez, no seu PC):
+
+```bash
+K=~/.config/boz-mobile-test; mkdir -p "$K"; chmod 700 "$K"; umask 077
+head -c 32 /dev/urandom | base64 -w0 | tr -d '/+=' > "$K/password"
+keytool -genkeypair -storetype PKCS12 -keystore "$K/boz-mobile-test.p12" -alias boz-mobile-test \
+  -keyalg RSA -keysize 3072 -validity 3650 -dname 'CN=BOZ Mobile Test, O=Development only' \
+  -storepass:file "$K/password" -keypass:file "$K/password"
+base64 -w0 "$K/boz-mobile-test.p12" | gh secret set BOZ_TEST_KEYSTORE_B64 -R chgmcontato/boz-reimagined
+gh secret set BOZ_TEST_KEYSTORE_PASSWORD -R chgmcontato/boz-reimagined < "$K/password"
+```
+
+A cópia em `~/.config/boz-mobile-test` é o único backup: secrets do GitHub não podem ser lidos de volta.
+Use essa chave só em builds de teste de `com.carlos.boz.mobile`, nunca para publicar o app. O
+certificado aparece no resumo de cada execução; se ele mudar, o Android recusa a atualização.
+
 ## Compilar (no seu PC)
 
 Precisa de: JDK 17, Android SDK com **NDK 27.2.12479018** e **CMake 3.22.1** (Android Studio →
@@ -128,7 +177,9 @@ continua escondido, porque é o `boz.s3e` da TV, então dentro da partida use um
 | `memory: N mappings below 4 GiB ..., M inside 0x40000000-0x90000000; page size P` | mapa do processo ao carregar (o conflito do 1:1) |
 | `guest address space at 0x...` | a reserva de 4 GiB (base + endereço) |
 | `dynarmic: A32 JIT, page table` | Dynarmic arm64 inicializado |
-| `OpenGL OpenGL ES 3.x ... on <GPU>`, `game requested an OpenGL ES N context` | contexto GL |
+| `OpenGL OpenGL ES 3.x ... on <GPU>` | contexto GL real |
+| `shader N source: S strings, B bytes, L lines, hash H` | o texto entregue ao driver (arquivo em `shader-dump/`) |
+| `GL debug: callback on`, `GL debug: in <chamada>, frame N: <texto>` | erro de GL com a origem exata |
 | `compressed texture format 0x....` | formatos de textura que o jogo envia |
 | `shader N failed to compile`, `GL program N failed to link`, `GL error 0x....` | shaders e GL (até 40 erros) |
 | `invalid read/write/fetch at 0x........` + registradores | acesso do **jogo** a memória não mapeada (Dynarmic) |
@@ -144,7 +195,7 @@ continua escondido, porque é o `boz.s3e` da TV, então dentro da partida use um
 | O app abre, a cópia dos arquivos termina | tela de setup |
 | `memory: N mappings below 4 GiB ..., M inside 0x40000000-0x90000000` | log (diagnóstico do 1:1) |
 | `guest address space at 0x...` e `dynarmic: A32 JIT, page table` | log |
-| `OpenGL OpenGL ES 3.x ... on <GPU>` e `game requested an OpenGL ES N context` | log |
+| `OpenGL OpenGL ES 3.x ... on <GPU>` e nenhum `failed to compile`/`failed to link` | log |
 | `installed` / `mode reimagined` / `boz.s3e mapped at 0x4a000000` | log |
 | Título → menu principal Reimagined, com texturas, sem travar | tela (print) |
 | Som no menu | ouvido |
@@ -187,7 +238,12 @@ Ambiente: Linux x86-64, `aarch64-linux-gnu-gcc` 13, `qemu-aarch64` 8.2, Mesa 25.
 | Trechos `__ANDROID__` (`platform_android.c`, `main.c`, `gl.c`, `ui.c`) | ✅ `-fsyntax-only` com headers falsos do NDK |
 | Leitura do `/proc/self/maps` (diagnóstico de memória) | ✅ |
 | **PC (Makefile) antes e depois**: build, launcher, testes `gl_state`, `timer_cache`, `pvrtc`, `updater` | ✅ igual |
-| Gradle/AGP, NDK, APK, aparelho | ⬜ não disponível aqui |
+| `tools/test_gles_shaders.c` no Mesa ES 3.2: corte em 64 falha, 165/182 strings compilam, vinculam e desenham | ✅ também roda no Actions |
+| Os 62 shaders reais capturados de uma partida, compilados de novo um a um | ✅ 0 falhas |
+| Fluxo real no Mesa, oculto (flavor Android, BOZ-TV v0.6): título → menu → Single Player → Kino, partida com zumbi | ✅ sem falha de shader |
+| `gl.c` do PC pré-processado, antes e depois desta correção | ✅ idêntico |
+| Gradle/AGP, NDK, APK | ✅ no Actions e no PC |
+| Aparelho | ⬜ a validar no S24 FE |
 
 Para repetir (com os caminhos do Boost e do SDL extraídos):
 
@@ -201,7 +257,8 @@ cmake --build /tmp/boz-gles && SDL_VIDEO_X11_FORCE_EGL=1 /tmp/boz-gles/boz-runti
 
 ## Problemas conhecidos e limitações desta etapa
 
-- **Não validado no aparelho.** Nada acima prova que o jogo roda no S24 FE: é o próximo passo.
+- **Não validado no aparelho.** O Mesa não é o driver do S24 FE (ANGLE + Xclipse), que pode recusar o
+  que o Mesa aceita. Nada acima prova que o jogo roda no aparelho: é o próximo passo.
 - **HUD de toque escondido:** o `boz.s3e` da TV esconde os botões de toque e troca o recarregar.
   Desfazer esses patches de entrada na memória, só no Mobile, é da Etapa 6. Por enquanto a partida
   se joga com controle.
@@ -212,10 +269,8 @@ cmake --build /tmp/boz-gles && SDL_VIDEO_X11_FORCE_EGL=1 /tmp/boz-gles/boz-runti
   FE). Áreas seguras e layout adaptado ficam para a Etapa 6.
 - **Co-op:** o multicast lock já é pedido e o ZeroConf do PC está no build, mas não foi testado
   nada de rede. A proteção de rede local do Android 16 pode interferir (Etapa 3).
-- **OpenGL ES 1:** se o log mostrar `game requested an OpenGL ES 1 context`, a hipótese do ES2 cai
-  e o contexto precisa mudar (há um plano: contexto ES 1.1 + apresentação sem `glBlitFramebuffer`).
-- Captura de tela de depuração do runtime (`video_debug_capture`) lê `GL_RGB`, que o ES não aceita.
-  Afeta só os prints do modo script, não o jogo.
+- O jogo é ES 2.0 de fato: usa shaders GLSL ES 1.00 e `glUseProgram`. O número da linha "game asked
+  EGL" não indica a versão (ver o primeiro boot).
 - Pré-existente no PC, não corrigido aqui: num clone novo o `make` pode regerar
   `src/gl_thunks.c` a partir de `tools/gen_gl.py`, que está defasado (falta `gl_skip_draws`), e o
   link falha. Contorno: `git checkout src/gl_thunks.c && touch src/gl_thunks.c`. O build Mobile
