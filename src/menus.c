@@ -1540,6 +1540,10 @@ bool menus_back(void) {
         input_tap(200, 633); /* the native RETURN */
         return true;
     }
+    if (strcmp(screen, "cooplobby") == 0 || strcmp(screen, "coopvote") == 0) {
+        input_tap(285, 635); /* the lobby ignores the back key: its BACK arrow */
+        return true;
+    }
     const struct style *s = style_of(screen);
     if (s && s->page) {
         for (int i = 0; i < g_target_count; ++i) {

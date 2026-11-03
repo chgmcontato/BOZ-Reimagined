@@ -271,6 +271,10 @@ final class Cursor {
                     }
                     return true;
                 }
+                if ("cooplobby".equals(m_Menus.screenId()) || "coopvote".equals(m_Menus.screenId())) {
+                    if (down && repeat == 0) tapAt(285, 635);   // o lobby ignora a tecla de voltar: seta BACK
+                    return true;
+                }
                 if (down && repeat == 0) m_Menus.allowReconnectConfirmation();
                 if (m_SliderEdit) {          // B solta o slider em vez de voltar de tela
                     if (down && repeat == 0) endEdit();

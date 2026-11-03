@@ -522,10 +522,6 @@ extern "C" void ret64(uint64_t value) {
     auto &r = current_jit().Regs();
     r[0] = static_cast<uint32_t>(value);
     r[1] = static_cast<uint32_t>(value >> 32);
-    /* Experimental (CODBOZ_SESSION_ZERO=1): BOZ formats its session name with "%s_%lu" and a 64-bit time on
-     * the stack, so %lu reads r3. On a real device that is 0 ("kino_0"); here it is leftover memory. */
-    static const bool session_zero = getenv("CODBOZ_SESSION_ZERO") != nullptr;
-    if (session_zero) r[3] = 0;
 }
 
 extern "C" void retf(float value) {

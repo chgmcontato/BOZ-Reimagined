@@ -122,6 +122,8 @@ static boolean coopSession() { return s_CoopSession; }
             for (Screen s : m_Screens) if ("pausecoop".equals(s.id)) return s;
         return m_Current;
     }
+    private long m_RecNs;
+    private int m_RecCount;
     private boolean m_ReconnectDismissed;
     void allowReconnectConfirmation() { m_ReconnectDismissed = false; }
     void reconnectConfirmationChosen() {
@@ -303,7 +305,14 @@ static boolean coopSession() { return s_CoopSession; }
                 m_Bitmap.getPixels(px, 0, m_Bitmap.getWidth(), 0, 0, m_Bitmap.getWidth(), m_Bitmap.getHeight());
                 m_Px = px;
                 int[] gray = toGray(m_Bitmap);
+                long t0 = System.nanoTime();
                 Screen s = recognize(blur(gray));
+                m_RecNs += System.nanoTime() - t0;
+                if (++m_RecCount == 200) {
+                    Log.i(TAG, "Menus: reconhecimento médio " + (m_RecNs / 200000) + " us");
+                    m_RecCount = 0;
+                    m_RecNs = 0;
+                }
                 m_Main.post(() -> { setCurrent(s); capturePausePlayers(); });
             }, m_Copy);
         } catch (Exception e) {
@@ -385,10 +394,12 @@ static boolean coopSession() { return s_CoopSession; }
                 if (cx < 0 || cy < 0 || cx + pw > m_GW || cy + ph > m_GH) continue;
                 long sum = 0;
                 int k = 0;
-                for (int j = 0; j < ph; j++)
+                // para esta posição assim que ela não pode mais vencer: o mínimo final é o mesmo
+                final float limit = best * ref.length;
+                for (int j = 0; j < ph && sum < limit; j++)
                     for (int i = 0; i < pw; i++)
                         sum += Math.abs(g[(cy + j) * m_GW + cx + i] - ref[k++]);
-                best = Math.min(best, sum / (float) ref.length);
+                if (sum < limit) best = sum / (float) ref.length;
             }
         }
         return best;
