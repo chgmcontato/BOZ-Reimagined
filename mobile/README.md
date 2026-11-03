@@ -169,7 +169,7 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties   # ou abra a pasta no Andro
 Nos menus, o toque funciona como o mouse do PC. Na partida, os controles de toque são do runtime
 (`src/touch_controls.c`, só no Android): joystick flutuante à esquerda, arrasto à direita para a câmera
 e botões FIRE (também gira a câmera), AIM, RELOAD, USE, GREN, KNIFE, SWAP, TACT e CROUCH, mais a pausa no
-canto superior esquerdo. Eles somem ao usar um controle Bluetooth e voltam no próximo toque. O botão
+canto superior esquerdo (o ícone do próprio jogo). Joystick no limite para frente = correr; o botão FPS, no topo, liga e desliga o contador. Eles somem ao usar um controle Bluetooth e voltam no próximo toque. O botão
 Voltar do Android fecha o jogo.
 
 ### Diagnóstico gravado no log (builds desta etapa)

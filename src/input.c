@@ -986,7 +986,13 @@ static void touch_finger(int64_t id, int phase, float x, float y) {
         g_touch_hidden = false;
     }
     touch_controls_finger(id, phase, x, y);
-    if (touch_controls_take_pause()) {
+    if (touch_controls_take_fps()) {
+        g_opt.show_fps = !g_opt.show_fps;
+        settings_save();
+    }
+    /* Dead Ops draws its own pause icon on the other side */
+    bool deadops_pause = phase == TOUCH_DOWN && reimagined_deadops() && x > 1170 && y < 100;
+    if (touch_controls_take_pause() || deadops_pause) {
         /* the Escape path: pause, free the cursor, Dead Ops' own button */
         SDL_Event e;
         memset(&e, 0, sizeof(e));
@@ -1009,6 +1015,9 @@ static bool touch_action(int action) {
         if (action == BIND_BOOST) return touch_controls_down(BIND_AIM);
         if (action == BIND_NUKE) return touch_controls_down(BIND_GRENADE);
         if (action == BIND_AIM || action == BIND_GRENADE) return false;
+    }
+    if (action == BIND_USE && !touch_controls_down(BIND_AIM) && touch_controls_sprint()) {
+        return true;
     }
     return touch_controls_down(action);
 }

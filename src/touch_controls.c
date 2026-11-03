@@ -21,6 +21,7 @@ enum {
     ROLE_LOOK,
     ROLE_BUTTON,
     ROLE_PAUSE,
+    ROLE_FPS,
 };
 
 #define STICK_REST_X 210.0f
@@ -30,6 +31,11 @@ enum {
 #define STICK_AREA_RIGHT 560.0f
 #define PAUSE_RIGHT 100.0f
 #define PAUSE_BOTTOM 90.0f
+#define FPS_X 640.0f
+#define FPS_Y 34.0f
+#define FPS_R 30.0f
+#define SPRINT_ON 0.92f
+#define SPRINT_OFF 0.75f
 
 struct button {
     int action;
@@ -60,7 +66,7 @@ static struct finger {
 static float g_stick_x = STICK_REST_X, g_stick_y = STICK_REST_Y, g_knob_x, g_knob_y;
 static bool g_stick_held;
 static float g_look_dx, g_look_dy;
-static bool g_pause_pending;
+static bool g_pause_pending, g_fps_pending, g_sprint;
 
 static int button_at(float x, float y) {
     int best = -1;
@@ -109,7 +115,10 @@ static void finger_down(int64_t id, float x, float y) {
     f->x = x;
     f->y = y;
     int button = button_at(x, y);
-    if (x < PAUSE_RIGHT && y < PAUSE_BOTTOM) {
+    if (fabsf(x - FPS_X) < FPS_R * 1.3f && fabsf(y - FPS_Y) < FPS_R * 1.3f) {
+        f->role = ROLE_FPS;
+        g_fps_pending = true;
+    } else if (x < PAUSE_RIGHT && y < PAUSE_BOTTOM) {
         f->role = ROLE_PAUSE;
         g_pause_pending = true;
     } else if (button >= 0) {
@@ -161,7 +170,7 @@ void touch_controls_reset(void) {
     g_stick_x = STICK_REST_X;
     g_stick_y = STICK_REST_Y;
     g_look_dx = g_look_dy = 0;
-    g_pause_pending = false;
+    g_pause_pending = g_fps_pending = g_sprint = false;
 }
 
 void touch_controls_move(float *x, float *y) {
@@ -194,6 +203,25 @@ bool touch_controls_take_pause(void) {
     return pending;
 }
 
+bool touch_controls_take_fps(void) {
+    bool pending = g_fps_pending;
+    g_fps_pending = false;
+    return pending;
+}
+
+bool touch_controls_sprint(void) {
+    float x, y;
+    touch_controls_move(&x, &y);
+    float length = sqrtf(x * x + y * y);
+    /* forward only, and a band so the thumb does not flicker it at the edge */
+    if (y > -0.5f || length < SPRINT_OFF) {
+        g_sprint = false;
+    } else if (length >= SPRINT_ON) {
+        g_sprint = true;
+    }
+    return g_sprint;
+}
+
 bool touch_controls_down(int action) {
     for (int i = 0; i < BUTTON_COUNT; ++i) {
         if (k_buttons[i].action == action && button_held(i)) {
@@ -208,7 +236,8 @@ void touch_controls_draw(void) {
     touch_controls_move(&mx, &my);
     ui_circle(g_stick_x, g_stick_y, STICK_RADIUS, 0x38000000u);
     ui_circle(g_stick_x, g_stick_y, STICK_RADIUS - 6, 0x30ffffffu);
-    ui_circle(g_stick_x + mx * STICK_RADIUS, g_stick_y + my * STICK_RADIUS, 44, 0x90f5f0e0u);
+    ui_circle(g_stick_x + mx * STICK_RADIUS, g_stick_y + my * STICK_RADIUS, 44,
+              g_sprint ? 0xc0d02020u : 0x90f5f0e0u);
     for (int i = 0; i < BUTTON_COUNT; ++i) {
         const struct button *b = &k_buttons[i];
         bool held = button_held(i);
@@ -216,7 +245,7 @@ void touch_controls_draw(void) {
         ui_circle(b->x, b->y, b->r - 4, held ? 0xb0d02020u : 0x38ffffffu);
         ui_text(b->label, b->x, b->y + 7, b->r > 80 ? 26 : 19, 0xe0ffffffu, UI_CENTER);
     }
-    /* pause: the same corner as the game's own pause icon */
-    ui_rect(26, 20, 12, 40, 0xc0ffffffu);
-    ui_rect(48, 20, 12, 40, 0xc0ffffffu);
+    /* the pause icon is the game's own: only its touch area is here */
+    ui_circle(FPS_X, FPS_Y, FPS_R, 0x60000000u);
+    ui_text("FPS", FPS_X, FPS_Y + 7, 19, 0xe0ffffffu, UI_CENTER);
 }

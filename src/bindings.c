@@ -209,6 +209,10 @@ static bool input_down(const char *in, bool km, SDL_GameController *pad) {
     }
     if (km && strncmp(in, "MOUSE:", 6) == 0) {
         int b = atoi(in + 6);
+#ifdef CODBOZ_GLES
+        /* SDL copies every finger to the left mouse button: a touch anywhere would fire */
+        return false;
+#endif
         return b >= 1 && b <= 5 && (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(b));
     }
     if (km && strncmp(in, "WHEEL:", 6) == 0) {
