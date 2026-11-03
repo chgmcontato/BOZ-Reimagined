@@ -158,51 +158,62 @@ final class StyledScreen {
         Style s = style(id);
         if (s == null) return false;
         c.save(); c.scale(width / 1280f, height / 720f);
-        p.setTextAlign(Paint.Align.LEFT);
         m_Id = id;
-        if (s.page) drawPage(c, s); else drawFrame(c, s);
-        if ("pause".equals(id)) drawMatch(c);
-        if ("pause".equals(id) && Menus.coopSession()) {
-            p.setTextAlign(Paint.Align.LEFT);
-            Bitmap players=Menus.coopPlayers();
-            // cartões até 1.15x, duas colunas, logo abaixo do nome/mapa/round, sem passar dos botões (x<=870)
-            if(players!=null) {
-                float k=Math.min(1.15f,806f/players.getWidth());
-                c.drawBitmap(players,null,new RectF(64,232,64+players.getWidth()*k,232+players.getHeight()*k),p);
-            }
-        }
-        p.setTextAlign(Paint.Align.CENTER);
-        // Rodapé com fundo de tinta: em frame fica sobre a borda de papel do SWF.
-        if (!s.page) { p.setColor(INK); c.drawRect(380, 684, 900, 714, p); }
-        text(c, s.hint, 640, s.page ? 698 : 706, s.page ? 20 : 17, s.page ? INK : PAPER, 500 + (s.page ? 280 : 0), false);
-        p.setTextAlign(Paint.Align.LEFT);
+        Kit k = Kit.get(m_Context);
+        k.screen = "pause".equals(id) ? "pause_solo" : id;
+        if ("pause".equals(id) && Menus.coopSession()) drawCoopBox(c, k);
+        else if (s.page) drawPage(c, s, k);
+        else k.hint(c, s.hint);   // a tela do próprio jogo é a referência: só o rodapé comum
         c.restore();
         return true;
     }
 
-    private void drawPage(Canvas c, Style s) {
+    /** Pausa do Co-op: a tela do jogo fica inteira; só esta caixa vai por cima. */
+    private void drawCoopBox(Canvas c, Kit k) {
+        RectF box = new RectF(448, 26, 858, 138);
+        k.plate(c, box, 3, 0xF00D0C0B);
+        String map = mapName(Hud.s_Map);
+        int round = Hud.s_Round;
+        String line = (map != null ? map : "");
+        if (map != null && round > 0 && !"deadops".equals(Hud.s_Map)) line += " - ROUND " + round;
+        k.text(c, line, 464, 70, 25, Kit.PAPER, 378, true, Paint.Align.LEFT);
+        k.panel(c, new RectF(460, 88, 846, 128), null, "TIMER: " + (Hud.s_TimerShown ? "ON" : "OFF"), "", false, false, 0, 0);
+    }
+
+    private void drawPage(Canvas c, Style s, Kit k) {
+        if (s.message.length > 0) {
+            k.burst(c);
+            k.plate(c, new RectF(90, 250, 1190, 310 + s.message.length * 56), 6, 0xE80D0C0B);
+            for (int i = 0; i < s.message.length; i++)
+                k.text(c, s.message[i], 640, 300 + i * 56, 38, Kit.PAPER, 1080, true, Paint.Align.CENTER);
+            for (Button b : s.buttons) drawButton(c, b, k);
+            k.hint(c, Kit.HINT);
+            return;
+        }
         c.save();
         for (RectF w : s.windows) {
             if (Build.VERSION.SDK_INT >= 26) c.clipOutRect(w);
             else c.clipRect(w, Region.Op.DIFFERENCE);
         }
-        drawChrome(c);
-        if ("pause".equals(m_Id)) drawMapBackdrop(c);
+        k.sheet(c);
+        boolean pause = "pause".equals(m_Id);
+        if (pause) {
+            String asset = mapBackdrop(Hud.s_Map);
+            k.cover(c, asset != null ? art(m_Context, asset) : null,
+                    new RectF(Kit.BX0 + 6, Kit.BY0 + 6, Kit.BX1 - 6, Kit.BY1 - 6), 0x8C000000);
+        }
         c.restore();
-        p.setTextAlign(Paint.Align.RIGHT);
-        text(c, s.title, 1194, 100, 33, PAPER, 420, false);
-        p.setTextAlign(Paint.Align.LEFT);
         for (RectF w : s.windows) {
-            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(6); p.setColor(INK);
-            c.drawRect(w, p);
-            p.setStrokeWidth(1.5f); p.setColor(0xFF827763); c.drawRect(w, p);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(6); p.setColor(Kit.INK);
+            c.drawRect(w.left - 3, w.top - 3, w.right + 3, w.bottom + 3, p);
+            p.setStrokeWidth(1.5f); p.setColor(Kit.EDGE);
+            c.drawRect(w.left - 1, w.top - 1, w.right + 1, w.bottom + 1, p);
             p.setStyle(Paint.Style.FILL);
         }
-        p.setTextAlign(Paint.Align.CENTER);
-        for (int i = 0; i < s.message.length; i++)
-            text(c, s.message[i], 640, 260 + i * 56, 40, PAPER, 1080, true);
-        p.setTextAlign(Paint.Align.LEFT);
-        for (Button b : s.buttons) drawButton(c, b);
+        k.pageTitle(c, s.title);
+        for (Button b : s.buttons) drawButton(c, b, k);
+        if (pause) drawMatch(c, k);
+        k.hint(c, s.hint);
     }
 
     /** Janelas da página id recortadas do canvas (em pixels da View): a cortina por baixo não as cobre. */
@@ -231,31 +242,6 @@ final class StyledScreen {
         }
     }
 
-    /**
-     * Um painel só (48,38-1232,674) com o cenário: cobre a faixa do título e o corpo, que antes ficavam em blocos
-     * pretos de larguras diferentes. Escurece para o texto, mais forte no topo, e redesenha o título por cima.
-     */
-    private void drawMapBackdrop(Canvas c) {
-        String asset = mapBackdrop(Hud.s_Map);
-        Bitmap b = asset != null ? art(m_Context, asset) : null;
-        if (b == null) return;
-        RectF body = new RectF(48, 38, 1232, 674);
-        float h = b.getWidth() * body.height() / body.width();
-        float top = (b.getHeight() - h) * 0.4f;
-        android.graphics.Rect src = new android.graphics.Rect(0, Math.round(top), b.getWidth(), Math.round(top + h));
-        p.setColor(0xFFFFFFFF);
-        c.drawBitmap(b, src, body, p);
-        p.setColor(0x8C151211);   // INK translúcido
-        c.drawRect(body, p);
-        p.setShader(new android.graphics.LinearGradient(0, 38, 0, 170, 0xB0151211, 0x00151211,
-                android.graphics.Shader.TileMode.CLAMP));
-        c.drawRect(48, 38, 1232, 170, p);
-        p.setShader(null);
-        p.setTextAlign(Paint.Align.LEFT);
-        text(c, "BLACK OPS ZOMBIES", 86, 80, 30, PAPER, 660, false);
-        text(c, "REIMAGINED", 85, 119, 42, PAPER, 660, false);
-    }
-
     static String mapName(String id) {
         if (id == null || id.isEmpty()) return null;
         switch (id) {
@@ -269,44 +255,27 @@ final class StyledScreen {
     }
 
     /** Pause: jogador, mapa e round acima da janela do SWF (personagem, kills, headshots e revives). */
-    private void drawMatch(Canvas c) {
-        // no co-op o cabeçalho sobe para dar espaço aos cartões dos jogadores
-        int up = Menus.coopSession() ? 36 : 0;
-        text(c, PlayerNames.get(m_Context, 0), 196, 214 - up, 44, PAPER, 640, false);
+    private void drawMatch(Canvas c, Kit k) {
+        k.text(c, PlayerNames.get(m_Context, 0), 196, 196, 44, Kit.PAPER, 640, true, Paint.Align.LEFT);
         String map = mapName(Hud.s_Map);
         int round = Hud.s_Round;
-        String line = (map != null ? map : "") + (map != null && round > 0 ? "   \u2022   " : "")
+        String line = (map != null ? map : "") + (map != null && round > 0 ? "   -   " : "")
                 + (round > 0 ? "ROUND " + round : "");
-        if (!line.isEmpty()) text(c, line, 198, 252 - (up > 0 ? 40 : 0), 26, 0xFFD5C9AC, 640, false);
+        if (!line.isEmpty()) k.text(c, line, 198, 236, 26, Kit.YELLOW, 640, true, Paint.Align.LEFT);
     }
 
-    /** Papel, faixa do título e corpo de tinta: iguais em todas as páginas (e no MainMenu). */
-    private void drawChrome(Canvas c) {
-        c.drawColor(PAPER);
-        p.setColor(0xFFFFFFFF); dst.set(0, 0, 1280, 720);
-        if (paper != null) c.drawBitmap(paper, null, dst, p);
-        p.setColor(INK); c.drawRect(48, 134, 1232, 674, p);
-        c.drawRect(64, 38, 1216, 134, p);
-        p.setTextAlign(Paint.Align.LEFT);
-        text(c, "BLACK OPS ZOMBIES", 86, 80, 30, PAPER, 660, false);
-        text(c, "REIMAGINED", 85, 119, 42, PAPER, 660, false);
-    }
-
-    /**
-     * Cortina entre telas: a moldura fica parada e só o conteúdo troca. Se a espera passar de CURTAIN_HOLD_MS, um
-     * traço vermelho fino corre sob a faixa do título (sinal de que o jogo está trocando de tela).
-     */
+    /** Cortina entre telas: a folha fica parada; um traço vermelho corre se a espera passar de CURTAIN_HOLD_MS. */
     void drawCurtain(Canvas c, int width, int height, long elapsedMs) {
         c.save(); c.scale(width / 1280f, height / 720f);
-        drawChrome(c);
+        Kit.get(m_Context).sheet(c);
         if (elapsedMs > CURTAIN_HOLD_MS) {
             float in = Math.min(1f, (elapsedMs - CURTAIN_HOLD_MS) / 220f);
             float t = ((elapsedMs - CURTAIN_HOLD_MS) % SWEEP_MS) / (float) SWEEP_MS;
-            float e = t * t * (3 - 2 * t);                   // ease in-out
-            float len = 220, x = 64 - len + e * (1152 + len);
-            c.save(); c.clipRect(64, 128, 1216, 134);
+            float e = t * t * (3 - 2 * t);
+            float len = 220, x = Kit.BX0 - len + e * (Kit.BX1 - Kit.BX0 + len);
+            c.save(); c.clipRect(Kit.BX0, Kit.BY1 - 8, Kit.BX1, Kit.BY1 - 3);
             p.setColor(RED); p.setAlpha(Math.round(255 * in));
-            c.drawRect(x, 129, x + len, 134, p);
+            c.drawRect(x, Kit.BY1 - 8, x + len, Kit.BY1 - 3, p);
             p.setAlpha(255);
             c.restore();
         }
@@ -315,51 +284,17 @@ final class StyledScreen {
 
     static final long CURTAIN_HOLD_MS = 250, SWEEP_MS = 1100;
 
-    private void drawButton(Canvas c, Button b) {
+    private void drawButton(Canvas c, Button b, Kit k) {
         RectF r = b.bounds;
-        comicPath(r, r.height() > 100 ? 6 : 4);
-        c.save(); c.clipPath(panel);
-        p.setColor(b.primary && b.art == null ? RED : DIM); c.drawRect(r, p);
-        if (b.art != null) {
-            // Center crop, never stretch the original comic illustrations.
-            float artH = r.height() - 100;
-            float scale = Math.max(r.width() / b.art.getWidth(), artH / b.art.getHeight());
-            float w = b.art.getWidth() * scale, h = b.art.getHeight() * scale;
-            dst.set(r.centerX() - w / 2, r.top + (artH - h) / 2, r.centerX() + w / 2, r.top + (artH + h) / 2);
-            p.setColor(0xFFFFFFFF); c.drawBitmap(b.art, null, dst, p);
+        switch (b.id) {
+            case "back": case "no": case "quit": case "return":
+                k.arrow(c, true, r, b.title, b.id, false); return;
+            case "ok": case "yes": case "retry":
+                k.arrow(c, false, r, b.title, b.id, false); return;
+            default:
         }
-        if (!b.caption.isEmpty()) {
-            float top = r.bottom - 112;
-            p.setColor(b.primary ? RED : INK); c.drawRect(r.left, top, r.right, r.bottom, p);
-            text(c, b.title, r.left + 16, top + 44, 38, PAPER, r.width() - 32, false);
-            text(c, b.caption, r.left + 16, top + 85, 19, 0xFFD5C9AC, r.width() - 32, false);
-        } else {
-            float size = Math.min(31, r.height() * 0.42f);
-            String title = "timer".equals(b.id) ? "TIMER: " + (Hud.s_TimerShown ? "ON" : "OFF")
-                    : "fps".equals(b.id) ? "FPS: " + (Hud.s_FpsShown ? "ON" : "OFF") : b.title;
-            text(c, title, r.left + 22, r.centerY() + size * 0.36f, size, PAPER, r.width() - 44, false);
-        }
-        c.restore();
-        outline(c);
-    }
-
-    private void drawFrame(Canvas c, Style s) {
-        if (s.tag == null) return;
-        comicPath(s.tag, 5);
-        p.setColor(INK); c.drawPath(panel, p);
-        outline(c);
-        float size = Math.min(44, s.tag.height() * 0.62f);
-        text(c, s.title, s.tag.left + 18, s.tag.centerY() + size * 0.36f, size, PAPER, s.tag.width() - 36, false);
-        if (s.name != null) {
-            // Placa opcional ("name" no screens.json) com o nome do P1 sobre um rótulo do SWF.
-            comicPath(s.name, 4);
-            p.setColor(INK); c.drawPath(panel, p);
-            outline(c);
-            float ns = Math.min(30, s.name.height() * 0.62f), y = s.name.centerY() + ns * 0.36f;
-            text(c, "NAME:", s.name.left + 16, y, ns, 0xFFD5C9AC, 120, false);
-            p.setTypeface(comic); p.setTextSize(ns);
-            float x = s.name.left + 24 + p.measureText("NAME:");
-            text(c, PlayerNames.get(m_Context, 0), x, y, ns, PAPER, s.name.right - 16 - x, false);
-        }
+        String title = "timer".equals(b.id) ? "TIMER: " + (Hud.s_TimerShown ? "ON" : "OFF")
+                : "fps".equals(b.id) ? "FPS: " + (Hud.s_FpsShown ? "ON" : "OFF") : b.title;
+        k.panel(c, r, b.art, title, b.caption, false, false, 0, 0);
     }
 }

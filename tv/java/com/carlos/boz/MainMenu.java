@@ -57,44 +57,21 @@ final class MainMenu {
     }
 
     void draw(Canvas c, int width, int height) {
+        Kit k = Kit.get(m_Context);
+        k.screen = "main";
         c.save(); c.scale(width / 1280f, height / 720f);
-        c.drawColor(0xFFF2EEE4);
-        p.setColor(Color.WHITE); dst.set(0, 0, 1280, 720);
-        if (paper != null) c.drawBitmap(paper, null, dst, p);
-        p.setColor(0xFF151211); c.drawRect(48, 134, 1232, 674, p);
-        p.setColor(0xFF151211); c.drawRect(64, 38, 1216, 134, p);
-        text(c, "BLACK OPS ZOMBIES", 86, 80, 30, 0xFFF2EEE4, 660);
-        text(c, "REIMAGINED", 85, 119, 42, 0xFFF2EEE4, 660);
-        text(c, "MAIN MENU", 942, 100, 33, 0xFFF2EEE4, 250);
+        k.sheet(c);
+        k.pageTitle(c, "MAIN MENU");
         for (Tile t : tiles) {
-            panel.reset(); panel.moveTo(t.x, t.y + 6); panel.lineTo(t.x + t.w, t.y);
-            panel.lineTo(t.x + t.w - 3, t.y + t.h - 6); panel.lineTo(t.x + 2, t.y + t.h); panel.close();
-            c.save(); c.clipPath(panel);
-            p.setColor(0xFF151211); c.drawRect(t.x, t.y, t.x+t.w, t.y+t.h, p);
-            if (t.art != null) {
-                // Center crop, never stretch the original comic illustrations.
-                float artH = t.h - 100;
-                float scale = Math.max(t.w / t.art.getWidth(), artH / t.art.getHeight());
-                float w = t.art.getWidth()*scale, h = t.art.getHeight()*scale;
-                dst.set(t.x+(t.w-w)/2, t.y+(artH-h)/2, t.x+(t.w+w)/2, t.y+(artH+h)/2);
-                p.setColor(Color.WHITE); c.drawBitmap(t.art, null, dst, p);
+            RectF r = new RectF(t.x, t.y, t.x + t.w, t.y + t.h);
+            if ("quit".equals(t.id)) k.arrow(c, true, r, t.title, "quit", false);
+            else {
+                String title = "name".equals(t.id) ? "PLAYER: " + PlayerNames.get(m_Context, 0) : t.title;
+                boolean terminal = "profile".equals(t.id);   // main.psd: o terminal vai até o topo do painel
+                k.panel(c, r, t.art, title, t.caption, false, false, terminal ? 357 : 0, terminal ? 168 : 0);
             }
-            if (!t.caption.isEmpty()) {
-                float top = t.y + t.h - 112;
-                p.setColor("single".equals(t.id) ? 0xFF791D24 : 0xFF151211);
-                c.drawRect(t.x, top, t.x+t.w, t.y+t.h, p);
-                text(c, t.title, t.x+16, top+44, 38, 0xFFF2EEE4, t.w-32);
-                text(c, t.caption, t.x+16, top+85, 19, 0xFFD5C9AC, t.w-32);
-            } else if ("name".equals(t.id)) {
-                text(c, "PLAYER: " + PlayerNames.get(m_Context, 0), t.x+22, t.y+49, 31, 0xFFF2EEE4, t.w-44);
-            } else text(c, t.title, t.x+22, t.y+49, 31, 0xFFF2EEE4, t.w-44);
-            c.restore();
-            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(5); p.setColor(0xFF151211);
-            c.drawPath(panel, p);
-            p.setStrokeWidth(1.5f); p.setColor(0xFF827763); c.drawPath(panel, p);
-            p.setStyle(Paint.Style.FILL);
         }
-        text(c, "D-PAD: NAVIGATE     A: SELECT     B: BACK", 330, 698, 20, 0xFF151211, 780);
+        k.hint(c, Kit.HINT);
         c.restore();
     }
 }

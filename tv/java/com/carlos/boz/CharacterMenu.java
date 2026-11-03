@@ -93,63 +93,42 @@ final class CharacterMenu {
         p.setStyle(Paint.Style.FILL);
     }
 
+    /** Cunhas quadradas que se encaixam na diagonal: y, x e baseline do nome. */
+    private static final float[][] SLOTS = {{74, 214, 108}, {150, 106, 236}, {288, 106, 326}, {364, 218, 468}};
+    private static final String[] IDS = {"nikolai", "takeo", "richtofen", "dempsey"};
+    private static final String[] MAP_ART = {"kino", "deadops", "ascension", "cotd"};
+
     void draw(Canvas c, int width, int height, int map, int character,
               boolean busy, boolean failed, boolean launching) {
-        int selectedMap = Math.max(0, Math.min(Cursor.MAP_NAMES.length - 1, map - 1));
-        c.save(); c.scale(width / 1280f, height / 720f);
-        c.drawColor(INK);
-        bitmap(c, paper, 0, 0, 1280, 720);
-        // Recobre a ilustração da página-base; preserva o papel e suas bordas originais.
-        box(c, 48, 80, 1184, 582, INK);
-        bitmap(c, scenes[selectedMap], 64, 96, 1152, 556);
-        box(c, 64, 96, 1152, 556, 0x63000000);
-
-        // Tarjas de papel inclinadas e letras do próprio jogo, sem títulos de dashboard.
-        bitmap(c, titleStrip, 66, 34, 742, 119);
-        label(c, "SELECT CHARACTER", 103, 108, 39);
-        bitmap(c, titleStrip, 837, 73, 374, 79);
-        label(c, "SELECT MAP", 869, 125, 28);
-
+        int selected = Math.max(0, Math.min(3, map - 1));
         boolean arcade = map == 2;
+        Kit k = Kit.get(m_Context);
+        k.screen = "charselect";
+        c.save(); c.scale(width / 1280f, height / 720f);
+        k.sheet(c);
+        for (int i = 3; i >= 0; i--) k.image(c, portraits[i], 86, SLOTS[i][0], 290, 190, arcade ? 90 : 255);
         for (int i = 0; i < 4; i++) {
-            float y = 164 + i * 100;
-            bitmap(c, portraits[i], 86, y, 300, 94);
-            if (arcade) box(c, 86, y, 300, 94, 0xB0151211);
-            // O texto ocupa o espaço negativo de cada retrato, como na composição original.
-            float x = (i == 0 || i == 3) ? 211 : 101;
-            float baseline = y + ((i == 0 || i == 3) ? 42 : 29);
-            text(c, NAMES[i][0], x, baseline, 23, arcade ? 0xFFAAA69D : PAPER, true);
-            text(c, NAMES[i][1], x, baseline + 25, 23, arcade ? 0xFFAAA69D : PAPER, true);
-            if (character == i && !arcade) bitmap(c, tick, 350, y + 3, 34, 37);
+            int color = arcade ? 0xFFAAA69D : character == i ? Kit.YELLOW : Kit.PAPER;
+            k.placed(c, IDS[i] + " name 1", NAMES[i][0], SLOTS[i][1], SLOTS[i][2], 23, color, 170, true, Paint.Align.LEFT);
+            k.placed(c, IDS[i] + " name 2", NAMES[i][1], SLOTS[i][1], SLOTS[i][2] + 25, 23, color, 170, true, Paint.Align.LEFT);
+            if (character == i && !arcade) k.image(c, tick, SLOTS[i][1] + 112, SLOTS[i][2] - 2, 38, 38, 255);
         }
-
-        // Quadro central grande: a arte original substitui os pequenos ícones da primeira versão.
-        comicPanel(c, 410, 155, 410, 399, INK, 7);
-        c.save(); c.clipPath(panel);
-        bitmap(c, scenes[selectedMap], 413, 155, 404, 399);
-        c.restore();
-        bitmap(c, titleStrip, 418, 467, 392, 76);
-        label(c, Cursor.MAP_NAMES[selectedMap], 445, 515, 27);
-        if (arcade) text(c, "ARCADE SQUAD", 459, 446, 23, PAPER, true);
-
-        for (int i = 0; i < Cursor.MAP_NAMES.length; i++) {
-            float y = 174 + i * 77;
-            boolean selected = selectedMap == i;
-            comicPanel(c, 850, y, 344, 64, selected ? 0xFF791D24 : 0xDE191614, i % 2 == 0 ? 4 : -3);
-            text(c, Cursor.MAP_NAMES[i], 866, y + 41, 24, PAPER, true);
-            if (selected) bitmap(c, tick, 1151, y + 13, 36, 38);
+        for (int i = 0; i < 4; i++) {
+            float x = 400 + i * 202, y = 112 - (i % 2 == 1 ? 4 : 0);
+            k.panel(c, new RectF(x, y, x + 196, y + 330), k.art("character-menu/" + MAP_ART[i] + ".png"),
+                    Cursor.MAP_NAMES[i], "", selected == i, selected != i, 0, 0);
+            if (selected == i) k.image(c, tick, x + 144, y + 10, 42, 42, 255);
         }
-
-        bitmap(c, back, 80, 577, 215, 94);
-        text(c, "BACK", 113, 630, 33, PAPER, true);
-        bitmap(c, start, 952, 577, 254, 94);
-        text(c, "START", 984, 632, 38,
-                busy || failed || launching ? 0xFFBCB8AD : PAPER, true);
-        String status = launching ? "STARTING GAME..." : failed ? "SELECT THE MAP AGAIN" :
-                busy ? "PREPARING MAP..." : "READY TO SURVIVE!";
-        text(c, status, 408, 620, failed ? 22 : 25, PAPER, true);
-        text(c, "PLAYER: " + PlayerNames.get(m_Context, 0), 408, 648, 19, 0xFFD5C9AC, true);
-        text(c, "D-PAD: NAVIGATE     A: SELECT     B: BACK", 265, 698, 20, INK, false);
+        k.strip(c, 58, 4, 470, "SELECT CHARACTER", "character title");
+        k.strip(c, 700, 2, 400, "SELECT MAP", "map title");
+        boolean blocked = busy || failed || launching;
+        k.arrow(c, true, new RectF(76, 548, 316, 664), "BACK", "back", false);
+        k.arrow(c, false, new RectF(960, 548, 1200, 664), "START", "start", blocked);
+        String status = launching ? "STARTING GAME..." : failed ? "SELECT THE MAP AGAIN"
+                : busy ? "PREPARING MAP..." : arcade ? "ARCADE SQUAD" : "READY TO SURVIVE!";
+        k.text(c, status, 640, 590, 38, Kit.PAPER, 560, true, Paint.Align.CENTER);
+        k.text(c, "PLAYER: " + PlayerNames.get(m_Context, 0), 640, 628, 24, Kit.SAND, 560, true, Paint.Align.CENTER);
+        k.hint(c, Kit.HINT);
         c.restore();
     }
 }

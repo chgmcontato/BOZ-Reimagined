@@ -1,5 +1,5 @@
 {
- "_doc": "Telas SWF com overlay Android (StyledScreen.java). page = desenhada inteira; windows deixam o SWF aparecer (números dinâmicos). frame = só tarja sobre o título original + rodapé. Coordenadas 1280x720; tap = ponto tocado no SWF original (menus/shots). to = tela que o botão abre ('*' = muda sem destino conhecido); back = destino do B; name = placa com o nome do P1.",
+ "_doc": "Telas SWF com overlay Android (StyledScreen.java). page = desenhada inteira; windows deixam o SWF aparecer (n\u00fameros din\u00e2micos). frame = s\u00f3 tarja sobre o t\u00edtulo original + rodap\u00e9. Coordenadas 1280x720; tap = ponto tocado no SWF original (menus/shots). to = tela que o bot\u00e3o abre ('*' = muda sem destino conhecido); back = destino do B; name = placa com o nome do P1.",
  "screens": {
   "single": {
    "kind": "page",
@@ -190,9 +190,9 @@
    "windows": [
     [
      196,
-     270,
-     560,
-     190
+     272,
+     646,
+     228
     ]
    ],
    "buttons": [
@@ -287,10 +287,10 @@
    "hint": "D-PAD: NAVIGATE     A: SELECT",
    "windows": [
     [
-     240,
-     150,
-     520,
-     340
+     120,
+     140,
+     700,
+     390
     ]
    ],
    "buttons": [
@@ -330,124 +330,130 @@
   "settings": {
    "kind": "frame",
    "title": "SETTINGS",
-   "tag": [
-    160,
-    48,
-    350,
-    72
-   ],
    "back": "*"
   },
   "pausesettings": {
    "kind": "frame",
-   "title": "SETTINGS",
-   "tag": [
-    60,
-    10,
-    380,
-    90
-   ]
+   "title": "SETTINGS"
   },
   "sensitivity": {
    "kind": "frame",
-   "title": "SENSITIVITY",
-   "tag": [
-    60,
-    10,
-    380,
-    90
-   ]
+   "title": "SENSITIVITY"
   },
   "controls": {
    "kind": "frame",
    "title": "CONTROLS",
-   "tag": [
-    125,
-    40,
-    540,
-    75
-   ],
    "back": "*"
   },
   "help": {
    "kind": "frame",
    "title": "HELP",
-   "tag": [
-    145,
-    45,
-    305,
-    82
-   ],
    "back": "*"
   },
   "coop": {
-   "kind": "frame",
-   "title": "CO-OP",
-   "tag": [
-    145,
-    25,
-    520,
-    90
-   ],
-   "back": "main"
+   "kind": "page",
+   "title": "CO-OP MULTIPLAYER",
+   "back": "main",
+   "buttons": [
+    {
+     "id": "wifi",
+     "title": "LOCAL WI-FI",
+     "caption": "HOST OR JOIN ON YOUR NETWORK",
+     "bounds": [
+      96,
+      170,
+      650,
+      380
+     ],
+     "art": "main-menu/coop.png"
+    },
+    {
+     "id": "rejoin",
+     "title": "RE-JOIN",
+     "caption": "LAST DISCONNECTED SESSION",
+     "bounds": [
+      770,
+      170,
+      410,
+      380
+     ],
+     "art": "main-menu/profile.png"
+    },
+    {
+     "id": "back",
+     "title": "BACK",
+     "bounds": [
+      76,
+      560,
+      240,
+      104
+     ]
+    }
+   ]
   },
   "extras": {
    "kind": "frame",
    "title": "EXTRAS",
-   "tag": [
-    190,
-    50,
-    315,
-    70
-   ],
    "back": "main"
   },
   "player_profile": {
    "kind": "frame",
    "title": "PLAYER PROFILE",
-   "tag": [
-    168,
-    50,
-    440,
-    80
-   ],
    "back": "main"
   },
   "coopwifi": {
-   "kind": "frame",
-   "title": "CO-OP MULTIPLAYER",
-   "tag": [
-    180,
-    42,
-    512,
-    64
-   ],
-   "back": "coop"
+   "kind": "page",
+   "title": "LOCAL WI-FI",
+   "back": "coop",
+   "buttons": [
+    {
+     "id": "single-map",
+     "title": "SINGLE MAP",
+     "caption": "CHOOSE THE MAP FOR EVERYONE",
+     "bounds": [
+      96,
+      170,
+      530,
+      380
+     ],
+     "art": "character-menu/ascension.png"
+    },
+    {
+     "id": "map-vote",
+     "title": "MAP VOTE",
+     "caption": "LET THE PARTY DECIDE",
+     "bounds": [
+      650,
+      170,
+      530,
+      380
+     ],
+     "art": "character-menu/kino.png"
+    },
+    {
+     "id": "back",
+     "title": "BACK",
+     "bounds": [
+      76,
+      560,
+      240,
+      104
+     ]
+    }
+   ]
   },
   "coopmap": {
    "kind": "frame",
    "title": "SELECT MAP",
-   "tag": [
-    160,
-    44,
-    345,
-    72
-   ],
    "back": "coopwifi"
   },
   "cooplobby": {
    "kind": "frame",
    "title": "SETUP",
-   "tag": [
-    145,
-    52,
-    255,
-    80
-   ],
    "back": "*"
   },
   "pausecoop": {
-   "kind": "page",
+   "kind": "frame",
    "title": "PAUSED",
    "hint": "D-PAD: NAVIGATE     A: SELECT     START: RESUME",
    "buttons": [
