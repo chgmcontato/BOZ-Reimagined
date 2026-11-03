@@ -207,7 +207,7 @@ On the pause screen, T toggles the match timer. F11: fullscreen. F3: FPS counter
 - Windows is cross-built with MinGW-w64 (`brew install mingw-w64`). There the guest heap is 764 MB
   instead of 1 GB (Windows keeps a page at 0x7ffe0000); a match uses about 155 MB.
 - `CODBOZ_PERF=1` logs a per-second performance line; `CODBOZ_SCRIPT` drives the game from a
-  script (used for the screenshots above); `CODBOZ_PREVIEW_COOP_PAUSE=1` shows the co-op pause card, `CODBOZ_PREVIEW_COOP=1` shows the co-op menus in a solo match; `CODBOZ_TEST_FREEZE=1` holds the match's pause byte from 25 s to 45 s; `CODBOZ_AIM_PROBE=1` logs the player's yaw and pitch next to the mouse motion (read-only).
+  script (used for the screenshots above); `CODBOZ_PREVIEW_COOP_PAUSE=1` shows the co-op pause card, `CODBOZ_PREVIEW_COOP=1` shows the co-op menus in a solo match; `CODBOZ_TEST_FREEZE=S` holds a co-op-style pause for 20 s from second S of a match; `CODBOZ_AIM_PROBE=1` logs the player's yaw and pitch next to the mouse motion (read-only).
 
 </details>
 
