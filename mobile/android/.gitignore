@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+# SDL2 and Boost, downloaded and checked by app/build.gradle.kts
+.deps/
