@@ -223,10 +223,22 @@ int main(int argc, char **argv) {
         if (obb && ok) {
             launcher_remember(-1, obb);
         }
+#ifdef __ANDROID__
+        /* the app hands everything in one start: install, remember the OBB, then play */
+        if (!ok) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Black Ops Zombies",
+                                     "Could not install the game from the chosen files. See the log.",
+                                     NULL);
+            return 1;
+        }
+        if (!play)
+#endif
         return ok ? 0 : 1;
     }
     settings_load();
+#ifndef __ANDROID__ /* the app updates through its APK, not by replacing an executable */
     updater_init(argc, argv, g_opt.auto_update);
+#endif
     char path[1300];
     snprintf(path, sizeof(path), "%s/bindings.txt", g_data_root);
     bindings_load(path);
