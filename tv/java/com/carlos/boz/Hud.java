@@ -730,6 +730,7 @@ final class Hud {
                     Log.i(TAG, "imagem do jogo em " + Long.toHexString(m_Base));
                     unlockFrameRate(m[0], all);
                     patchWaves(m[0], all, m_Base);
+                    patchRejoin(m[0], all, m_Base);
                     hideNativeFps(m_Base, m[0], all);
                     return true;
                 }
@@ -800,6 +801,51 @@ final class Hud {
         }
     }
     private static final byte[] WAVE_BLOB = {16,-75,1,35,24,74,26,-79,22,74,18,104,2,-79,83,110,1,43,-72,-65,1,35,4,43,-56,-65,4,35,91,30,9,41,5,-40,18,-94,10,36,3,-5,4,34,80,92,16,-67,25,-94,-45,92,65,-10,64,114,-111,66,-120,-65,17,70,1,-5,1,-16,9,34,2,-5,3,-14,0,-5,2,-16,64,-10,-80,18,16,68,76,-10,-51,66,-52,-10,-52,66,-96,-5,2,32,-64,9,16,-67,0,-65,0,-65,0,0,0,0,0,0,0,0,4,4,5,8,11,15,17,18,18,18,4,4,6,9,13,17,19,20,21,21,6,6,6,11,16,20,24,25,27,28,6,6,8,13,18,23,28,31,33,35,1,2,4,6};
+    /**
+     * RE-JOIN no Local Wi-Fi: duas correções, sempre conferindo os bytes antes de gravar.
+     * 1) A descoberta do Android entrega "kino_0._PROJECT_KIWI._tcp.local". O jogo guarda esse nome com "s_" na frente,
+     *    e ele não cabe nos 32 bytes do campo: corrompe o filtro da busca e, como host assumido, o tipo do serviço
+     *    anunciado. Um trecho novo (0x40f140), antes do callback "serviço encontrado", corta o nome no primeiro ponto.
+     * 2) A biblioteca nativa não notifica de novo um serviço já visto, e a checagem "session availability" gastava essa
+     *    notificação: a busca depois do YES não achava o host. A checagem agora só espera 1 s e oferece a volta; sem o
+     *    host, o YES cai no caminho normal do jogo: procura e abre o lobby.
+     */
+    private static final int REJOIN_CAVE = 0x40f140;
+    private static final int[] REJOIN_CAVE_CODE = {0x10,0xb5,0x8c,0x68,0x3c,0xb1,0x23,0x78,0x2b,0xb1,0x2e,0x2b,0x01,0xd0,0x01,0x34,0xf9,0xe7,0x00,0x23,0x23,0x70,0xbd,0xe8,0x10,0x40,0xfa,0xf4,0x03,0xba};
+    private static void patchRejoin(long region, byte[] all, long base) {
+        // offset, bytes originais, bytes novos
+        int lit = (REJOIN_CAVE | 1) - 0x10917e;
+        final int[][][] edits = {
+            {{0x1091b4}, {0xe7, 0x03, 0x00, 0x00}, {lit & 0xff, lit >> 8 & 0xff, lit >> 16 & 0xff, lit >>> 24}},  // callback
+            {{0x1c3d24}, {0x41, 0xf2, 0x88, 0x33}, {0x40, 0xf2, 0xe8, 0x33}},            // checagem: 5000 -> 1000 ms
+            {{0x1c3d54}, {0x66, 0xf7, 0x5e, 0xfd}, {0x00, 0x20, 0x00, 0xbf}},            // sem busca nativa: movs r0,#0; nop
+            {{0x1c39b0}, {0xd0, 0xf8, 0x3c, 0x06, 0x66, 0xf7, 0x48, 0xff},
+                         {0x01, 0x23, 0x80, 0xf8, 0xe2, 0x31, 0x00, 0xbf}},              // fim: disponível = 1, sem parar busca
+        };
+        try {
+            boolean done = true, orig = true;
+            for (int[][] e : edits) {
+                int at = (int) (base + e[0][0] - region);
+                for (int i = 0; i < e[1].length; i++) {
+                    if ((all[at + i] & 0xff) != e[2][i]) done = false;
+                    if ((all[at + i] & 0xff) != e[1][i]) orig = false;
+                }
+            }
+            if (done) return;
+            int cave = (int) (base + REJOIN_CAVE - region);
+            for (int i = 0; i < REJOIN_CAVE_CODE.length; i++) if (all[cave + i] != 0) orig = false;
+            if (!orig) { Log.i(TAG, "rejoin: código inesperado, sem mudança"); return; }
+            for (int i = 0; i < REJOIN_CAVE_CODE.length; i++)
+                s_PokeByte.invoke(null, base + REJOIN_CAVE + i, (byte) REJOIN_CAVE_CODE[i]);
+            for (int[][] e : edits)
+                for (int i = e[2].length - 1; i >= 0; i--)
+                    s_PokeByte.invoke(null, base + e[0][0] + i, (byte) e[2][i]);
+            Log.i(TAG, "rejoin: nome e busca da reconexão corrigidos");
+        } catch (Exception e) {
+            Log.w(TAG, "rejoin: não foi possível corrigir", e);
+        }
+    }
+
     private static void patchWaves(long region, byte[] all, long base) {
         try {
             s_WaveCoopAddr = 0;

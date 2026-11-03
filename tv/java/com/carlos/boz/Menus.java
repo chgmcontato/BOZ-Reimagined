@@ -354,7 +354,9 @@ static boolean coopSession() { return s_CoopSession; }
         for (Screen s : m_Screens) {
             if (m_ReconnectDismissed && "reconnectconfirm".equals(s.id)) continue;
             if ("leavecoop".equals(s.id) && !s_CoopSession) continue;
-            if (s.after != null && s != m_Current && ((m_Current != null ? m_Current : m_LastKnown) == null ||
+            // m_LastKnown == s: a sonda falhou por um instante na própria tela; ela continua valendo
+            if (s.after != null && s != m_Current && !(m_Current == null && m_LastKnown == s)
+                    && ((m_Current != null ? m_Current : m_LastKnown) == null ||
                     !s.after.contains((m_Current != null ? m_Current : m_LastKnown).id))) continue;
             float d = match(s, g);
             if (d < bestD) { bestD = d; best = s; }

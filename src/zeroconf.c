@@ -257,6 +257,13 @@ static int instance_name_for_search(const struct zero_conf_search *search,
     }
     memcpy(name, instance_fqdn, name_length);
     name[name_length] = 0;
+    /* A TV that took over as host announces the name it stored, already with the service in it
+     * ("s_kino_0._PROJECT_KIWI._tcp.local._PROJECT_KIWI._tcp.local"). The session is "s_kino_0". */
+    while (name_length > service_length + 1 && name[name_length - service_length - 1] == '.' &&
+           strcasecmp(name + name_length - service_length, search->service_fqdn) == 0) {
+        name_length -= service_length + 1;
+        name[name_length] = 0;
+    }
     return 1;
 }
 

@@ -516,7 +516,8 @@ void reimagined_frame(void) {
                      net >= (uint32_t)GUEST_HEAP_BASE ? (int)rd(net + 0x64) : -1);
         }
     }
-    sync_coop_pause(reimagined_match_active() && screens_coop_session());  /* includes the network check */
+    /* debug: CODBOZ_NO_MATCH_PAUSE=1 leaves a dropped party to the game alone, to compare re-joining */
+    sync_coop_pause(reimagined_match_active() && screens_coop_session() && !getenv("CODBOZ_NO_MATCH_PAUSE"));  /* includes the network check */
     /* debug: CODBOZ_PREVIEW_COOP=1 sets the game's co-op flag, so a solo match opens the native co-op pause */
     if (getenv("CODBOZ_PREVIEW_COOP") && reimagined_match_active() && rd(IMG(LEVEL))) {
         *(volatile uint8_t *)G2H(rd(IMG(LEVEL)) + 0x208) = 1;
