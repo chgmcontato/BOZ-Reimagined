@@ -1,0 +1,74 @@
+# BOZ Reimagined Mobile: builds the Android APK (mobile/android) with the real SDK and NDK and
+# checks its packaging. Development branch only; it never runs on main and publishes nothing but
+# a workflow artifact (the APK has no game data: the player picks their own files on the phone).
+name: mobile-android
+
+on:
+  push:
+    branches: [ccr-14e52815-etjy33]
+    paths:
+      - "mobile/**"
+      - "src/**"
+      - "third_party/**"
+      - ".github/workflows/mobile-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK packages (exact versions the project names)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true  # yes ends by SIGPIPE
+          "$SDKM" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1" > /dev/null
+          echo "sdk.dir=$ANDROID_HOME" > mobile/android/local.properties
+
+      - name: Gradle assembleRelease
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Check the APK
+        run: |
+          set -euo pipefail
+          APK=mobile/android/app/build/outputs/apk/release/app-release.apk
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          LLVM="$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          ls -la "$APK"
+          echo "== native libraries"
+          unzip -l "$APK" | grep "lib/" | tee libs.txt
+          for lib in libmain.so libSDL2.so libc++_shared.so; do
+            grep -q "lib/arm64-v8a/$lib" libs.txt || { echo "missing $lib"; exit 1; }
+          done
+          if grep -q "lib/armeabi" libs.txt || grep -q "lib/x86" libs.txt; then echo "unexpected ABI"; exit 1; fi
+          echo "== stored uncompressed and 16 KiB aligned (Android 15+ page sizes)"
+          "$BT/zipalign" -c -P 16 -v 4 "$APK" | grep -E "lib/|Verification" | tail -5
+          echo "== signature"
+          "$BT/apksigner" verify --print-certs "$APK" | sed -n "1,5p"
+          echo "== libmain.so"
+          mkdir -p x && unzip -o -q "$APK" "lib/arm64-v8a/*" -d x
+          "$LLVM/llvm-readelf" -h x/lib/arm64-v8a/libmain.so | grep -E "Class|Machine"
+          "$LLVM/llvm-readelf" -d x/lib/arm64-v8a/libmain.so | grep NEEDED
+          "$LLVM/llvm-readelf" -l x/lib/arm64-v8a/libmain.so | grep -A1 LOAD
+          "$LLVM/llvm-nm" -D --defined-only x/lib/arm64-v8a/libmain.so \
+            | grep -E " SDL_main$| Java_com_carlos_boz_mobile_BozActivity_nativeSetLogFile$"
+          "$BT/aapt2" dump badging "$APK" | grep -E "^package|sdkVersion|targetSdk|native-code|uses-gl-es"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: boz-reimagined-mobile-apk
+          path: mobile/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 14

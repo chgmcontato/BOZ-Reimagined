@@ -93,6 +93,11 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties   # ou abra a pasta no Andro
 # → app/build/outputs/apk/release/app-release.apk
 ```
 
+- Também há o workflow `.github/workflows/mobile-android.yml` (GitHub Actions, só na branch de
+  desenvolvimento). Ele compila com o SDK e o NDK reais e confere o APK: bibliotecas
+  `libmain.so`, `libSDL2.so` e `libc++_shared.so` só em arm64-v8a, alinhamento de 16 KiB,
+  assinatura, dependências e símbolos `SDL_main`/JNI do `libmain.so`. O APK fica como artifact da
+  execução por 14 dias.
 - Na primeira configuração, o Gradle baixa o SDL2 2.30.9 e os headers do Boost 1.86.0 das releases
   do GitHub, confere o SHA-256 e extrai em `mobile/android/.deps/` (cerca de 260 MB, ignorado pelo
   git).
@@ -115,6 +120,22 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties   # ou abra a pasta no Andro
 Para este teste: o toque funciona como o mouse do PC (um dedo; clica nos menus). O HUD de toque
 continua escondido, porque é o `boz.s3e` da TV, então dentro da partida use um **controle Bluetooth
 (padrão Xbox)**. O botão Voltar do Android fecha o jogo.
+
+### Diagnóstico gravado no log (builds desta etapa)
+
+| Linha no log | O que mede |
+|---|---|
+| `memory: N mappings below 4 GiB ..., M inside 0x40000000-0x90000000; page size P` | mapa do processo ao carregar (o conflito do 1:1) |
+| `guest address space at 0x...` | a reserva de 4 GiB (base + endereço) |
+| `dynarmic: A32 JIT, page table` | Dynarmic arm64 inicializado |
+| `OpenGL OpenGL ES 3.x ... on <GPU>`, `game requested an OpenGL ES N context` | contexto GL |
+| `compressed texture format 0x....` | formatos de textura que o jogo envia |
+| `shader N failed to compile`, `GL program N failed to link`, `GL error 0x....` | shaders e GL (até 40 erros) |
+| `invalid read/write/fetch at 0x........` + registradores | acesso do **jogo** a memória não mapeada (Dynarmic) |
+| `crash: signal N at host ... = GUEST 0x........` | acesso do **runtime** a uma página do jogo não mapeada: falha da tradução base + endereço |
+| `crash: signal N ... outside the guest space` | crash nativo fora da memória do jogo (o tombstone vem logo depois) |
+| `perf: N fps \| per frame ...`, `perf: scene map=... round=...` | FPS e tempo por quadro, a cada segundo |
+| `memory: rss ... kB, peak rss ... kB, virtual ... kB` | memória do processo, a cada 15 s |
 
 ### O que observar e me mandar
 
