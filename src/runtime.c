@@ -73,7 +73,8 @@ IMPORT(s3eDeviceYield) {
     int32_t ms = (int32_t)arg(0);
     /* The game paces itself by asking to yield the rest of a 33 ms frame; unless the launcher
      * limit is "30 (original)", our own limiter/vsync paces frames instead of these sleeps. */
-    if (g_opt.fps_limit != 30) {
+    extern bool video_surface_fixed(void);
+    if (g_opt.fps_limit != 30 || video_surface_fixed()) {
         ms = 0;
     }
     if (ms > 0) {

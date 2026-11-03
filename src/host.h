@@ -42,6 +42,7 @@ struct host_options {
     bool fullscreen;
     bool vsync;
     int fps_limit;
+    int low_fps_paused; /* FPS while a co-op match waits for a player; 0 = keep fps_limit */
     bool show_fps;
     float mouse_sensitivity;
     float mouse_y_scale; /* stick look: vertical gain relative to horizontal */

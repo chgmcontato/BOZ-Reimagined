@@ -5,6 +5,7 @@
 /* draws with the depth test on: screens.c tells a 3D scene from a flat menu */
 static unsigned gl_depth_test_on;
 unsigned gl_depth_draws;
+bool gl_skip_draws; /* a frame that will not be presented (FPS limit) */
 
 typedef void (*gl_any)(void);
 
@@ -200,6 +201,9 @@ static void gl_glCheckFramebufferStatus(void) {
 }
 
 static void gl_glClear(void) {
+    if (gl_skip_draws) {
+        return;
+    }
     static void (*fn)(uint32_t);
     if (!fn) {
         *(void **)&fn = gl_proc("glClear");
@@ -474,6 +478,10 @@ static void gl_glDrawArrays(void) {
     if (!fn) {
         *(void **)&fn = gl_proc("glDrawArrays");
     }
+    if (gl_skip_draws) {
+        gl_depth_draws += gl_depth_test_on;
+        return;
+    }
     fn(arg(0), (int32_t)arg(1), (int32_t)arg(2));
     gl_depth_draws += gl_depth_test_on;
 }
@@ -490,6 +498,10 @@ static void gl_glDrawElements(void) {
     static void (*fn)(uint32_t, int32_t, uint32_t, void *);
     if (!fn) {
         *(void **)&fn = gl_proc("glDrawElements");
+    }
+    if (gl_skip_draws) {
+        gl_depth_draws += gl_depth_test_on;
+        return;
     }
     fn(arg(0), (int32_t)arg(1), arg(2), G2H(arg(3)));
     gl_depth_draws += gl_depth_test_on;

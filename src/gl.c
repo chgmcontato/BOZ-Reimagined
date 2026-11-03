@@ -89,6 +89,9 @@ static void configure_swap_interval(void) {
  */
 static int g_width = 1280, g_height = 720;
 static int g_win_w = 1280, g_win_h = 720;
+/* What the framebuffer really is. The game sees g_width x g_height (its layout); on a fixed surface
+ * its default-framebuffer coordinates are scaled up here, so it draws natively at this size. */
+static int g_render_w = 1280, g_render_h = 720;
 static uint32_t g_game_fbo, g_game_color, g_game_depth;
 
 int video_width(void) {
@@ -204,8 +207,13 @@ void video_shutdown(void) {
 
 /* Before the game boots: borderless fullscreen at the monitor's resolution, if set. */
 /* The Reimagined menus are measured on the game's 1280x720 layout: at other sizes the game lays its
- * Flash pages out differently and nothing lines up. The window keeps the chosen size and scales it. */
+ * Flash pages out differently and nothing lines up. So the game keeps a 1280x720 logical surface and
+ * draws at the chosen resolution through scaled viewports (see "logical surface" below). */
 static bool g_fixed_surface;
+
+bool video_surface_fixed(void) {
+    return g_fixed_surface;
+}
 
 void video_fix_surface(void) {
     g_fixed_surface = true;
@@ -220,7 +228,15 @@ void video_enter_game(void) {
     SDL_PumpEvents();
     configure_swap_interval(); /* Fullscreen transitions can reset swap policy. */
     SDL_GL_GetDrawableSize(g_window, &g_win_w, &g_win_h);
+    g_render_w = g_width;
+    g_render_h = g_height;
     if (g_fixed_surface) {
+        /* other aspect ratios: 16:9 inside the chosen size, the window letterboxes it */
+        if (g_render_w * 9 > g_render_h * 16) {
+            g_render_w = g_render_h * 16 / 9;
+        } else {
+            g_render_h = g_render_w * 9 / 16;
+        }
         g_width = 1280;
         g_height = 720;
     }
@@ -235,14 +251,22 @@ void video_enter_game(void) {
     glGenRenderbuffers(1, &g_game_color);
     glGenRenderbuffers(1, &g_game_depth);
     glBindRenderbuffer(0x8d41, g_game_color);
-    glRenderbufferStorage(0x8d41, 0x8058, g_width, g_height); /* RGBA8 */
+    glRenderbufferStorage(0x8d41, 0x8058, g_render_w, g_render_h); /* RGBA8 */
     glBindRenderbuffer(0x8d41, g_game_depth);
-    glRenderbufferStorage(0x8d41, 0x88f0, g_width, g_height); /* DEPTH24_STENCIL8 */
+    glRenderbufferStorage(0x8d41, 0x88f0, g_render_w, g_render_h); /* DEPTH24_STENCIL8 */
     glBindRenderbuffer(0x8d41, 0);
     glBindFramebuffer(0x8d40, g_game_fbo);
     glFramebufferRenderbuffer(0x8d40, 0x8ce0, 0x8d41, g_game_color);
     glFramebufferRenderbuffer(0x8d40, 0x821a, 0x8d41, g_game_depth); /* DEPTH_STENCIL */
-    log_info("game surface %dx%d in a %dx%d window", g_width, g_height, g_win_w, g_win_h);
+    log_info("game surface %dx%d, rendered at %dx%d in a %dx%d window", g_width, g_height, g_render_w, g_render_h, g_win_w, g_win_h);
+}
+
+int video_render_width(void) {
+    return g_render_w;
+}
+
+int video_render_height(void) {
+    return g_render_h;
 }
 
 uint32_t video_game_fbo(void) {
@@ -261,9 +285,9 @@ static void present_game(void) {
     GLFN(void, glClear, uint32_t);
     GLFN(void, glColorMask, uint8_t, uint8_t, uint8_t, uint8_t);
     SDL_GL_GetDrawableSize(g_window, &g_win_w, &g_win_h);
-    float scale = (float)g_win_w / g_width < (float)g_win_h / g_height ? (float)g_win_w / g_width
-                                                                       : (float)g_win_h / g_height;
-    int w = (int)(g_width * scale), h = (int)(g_height * scale);
+    float scale = (float)g_win_w / g_render_w < (float)g_win_h / g_render_h ? (float)g_win_w / g_render_w
+                                                                            : (float)g_win_h / g_render_h;
+    int w = (int)(g_render_w * scale), h = (int)(g_render_h * scale);
     int x = (g_win_w - w) / 2, y = (g_win_h - h) / 2;
     uint8_t scissor = glIsEnabled(0x0c11);
     glDisable(0x0c11);
@@ -272,7 +296,7 @@ static void present_game(void) {
     glClearColor(0, 0, 0, 1);
     glClear(0x4000);
     glBindFramebuffer(0x8ca8, g_game_fbo);
-    glBlitFramebuffer(0, 0, g_width, g_height, x, y, x + w, y + h, 0x4000, 0x2601);
+    glBlitFramebuffer(0, 0, g_render_w, g_render_h, x, y, x + w, y + h, 0x4000, 0x2601);
     glBindFramebuffer(0x8d40, 0);
     if (scissor) {
         glEnable(0x0c11);
@@ -281,6 +305,140 @@ static void present_game(void) {
 
 SDL_Window *video_window(void) {
     return g_window;
+}
+
+/* ---- logical surface ---- */
+
+static bool g_default_bound = true;
+static int g_viewport[4] = {0, 0, 1280, 720}, g_scissor[4] = {0, 0, 1280, 720};
+
+static bool surface_scaled(void) {
+    return g_default_bound && (g_render_w != g_width || g_render_h != g_height);
+}
+
+static void scale_rect(const int in[4], int out[4]) {
+    int x1 = in[0] + in[2], y1 = in[1] + in[3];
+    out[0] = (int)((int64_t)in[0] * g_render_w / g_width);
+    out[1] = (int)((int64_t)in[1] * g_render_h / g_height);
+    out[2] = (int)((int64_t)x1 * g_render_w / g_width) - out[0];
+    out[3] = (int)((int64_t)y1 * g_render_h / g_height) - out[1];
+}
+
+static void logical_surface_restore(void) {
+    GLFN(void, glViewport, int32_t, int32_t, int32_t, int32_t);
+    GLFN(void, glScissor, int32_t, int32_t, int32_t, int32_t);
+    int v[4], s[4];
+    memcpy(v, g_viewport, sizeof(v));
+    memcpy(s, g_scissor, sizeof(s));
+    if (surface_scaled()) {
+        scale_rect(g_viewport, v);
+        scale_rect(g_scissor, s);
+    }
+    glViewport(v[0], v[1], v[2], v[3]);
+    glScissor(s[0], s[1], s[2], s[3]);
+}
+
+IMPORT(glViewport) {
+    for (int i = 0; i < 4; ++i) {
+        g_viewport[i] = (int)arg(i);
+    }
+    logical_surface_restore();
+}
+
+IMPORT(glScissor) {
+    for (int i = 0; i < 4; ++i) {
+        g_scissor[i] = (int)arg(i);
+    }
+    logical_surface_restore();
+}
+
+IMPORT(glLineWidth) {
+    GLFN(void, glLineWidth, float);
+    glLineWidth(argf(0) * (surface_scaled() ? (float)g_render_h / (float)g_height : 1.0f));
+}
+
+/*
+ * Reads from the default framebuffer: the game asked for logical pixels, so the region is resampled
+ * to that size in a small target first and read from there. Returns true when it swapped the READ
+ * binding; surface_read_end puts it back.
+ */
+static bool surface_read_begin(int *x, int *y, int w, int h) {
+    static uint32_t fbo, rb;
+    static int cap_w, cap_h;
+    if (!surface_scaled() || w <= 0 || h <= 0) {
+        return false;
+    }
+    GLFN(void, glGenFramebuffers, int32_t, uint32_t *);
+    GLFN(void, glGenRenderbuffers, int32_t, uint32_t *);
+    GLFN(void, glBindRenderbuffer, uint32_t, uint32_t);
+    GLFN(void, glRenderbufferStorage, uint32_t, uint32_t, int32_t, int32_t);
+    GLFN(void, glFramebufferRenderbuffer, uint32_t, uint32_t, uint32_t, uint32_t);
+    GLFN(void, glBindFramebuffer, uint32_t, uint32_t);
+    GLFN(void, glBlitFramebuffer, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, uint32_t, uint32_t);
+    GLFN(uint8_t, glIsEnabled, uint32_t);
+    GLFN(void, glDisable, uint32_t);
+    GLFN(void, glEnable, uint32_t);
+    if (!fbo) {
+        glGenFramebuffers(1, &fbo);
+        glGenRenderbuffers(1, &rb);
+    }
+    if (w > cap_w || h > cap_h) {
+        cap_w = w > cap_w ? w : cap_w;
+        cap_h = h > cap_h ? h : cap_h;
+        glBindRenderbuffer(0x8d41, rb);
+        glRenderbufferStorage(0x8d41, 0x8058, cap_w, cap_h);
+    }
+    int in[4] = {*x, *y, w, h}, r[4];
+    scale_rect(in, r);
+    uint8_t scissor = glIsEnabled(0x0c11);
+    glDisable(0x0c11);
+    glBindFramebuffer(0x8ca9, fbo);
+    glFramebufferRenderbuffer(0x8ca9, 0x8ce0, 0x8d41, rb);
+    glBindFramebuffer(0x8ca8, g_game_fbo);
+    glBlitFramebuffer(r[0], r[1], r[0] + r[2], r[1] + r[3], 0, 0, w, h, 0x4000, 0x2601);
+    glBindFramebuffer(0x8ca9, g_game_fbo);
+    glBindFramebuffer(0x8ca8, fbo);
+    if (scissor) {
+        glEnable(0x0c11);
+    }
+    *x = 0;
+    *y = 0;
+    return true;
+}
+
+static void surface_read_end(void) {
+    GLFN(void, glBindFramebuffer, uint32_t, uint32_t);
+    glBindFramebuffer(0x8ca8, g_game_fbo);
+}
+
+IMPORT(glReadPixels) {
+    GLFN(void, glReadPixels, int32_t, int32_t, int32_t, int32_t, uint32_t, uint32_t, void *);
+    int x = (int)arg(0), y = (int)arg(1);
+    bool swapped = surface_read_begin(&x, &y, (int)arg(2), (int)arg(3));
+    glReadPixels(x, y, (int)arg(2), (int)arg(3), arg(4), arg(5), G2H(arg(6)));
+    if (swapped) {
+        surface_read_end();
+    }
+}
+
+IMPORT(glCopyTexImage2D) {
+    GLFN(void, glCopyTexImage2D, uint32_t, int32_t, uint32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+    int x = (int)arg(3), y = (int)arg(4);
+    bool swapped = surface_read_begin(&x, &y, (int)arg(5), (int)arg(6));
+    glCopyTexImage2D(arg(0), (int)arg(1), arg(2), x, y, (int)arg(5), (int)arg(6), (int)arg(7));
+    if (swapped) {
+        surface_read_end();
+    }
+}
+
+IMPORT(glCopyTexSubImage2D) {
+    GLFN(void, glCopyTexSubImage2D, uint32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+    int x = (int)arg(4), y = (int)arg(5);
+    bool swapped = surface_read_begin(&x, &y, (int)arg(6), (int)arg(7));
+    glCopyTexSubImage2D(arg(0), (int)arg(1), (int)arg(2), (int)arg(3), x, y, (int)arg(6), (int)arg(7));
+    if (swapped) {
+        surface_read_end();
+    }
 }
 
 static void pace_frame(void) {
@@ -350,26 +508,79 @@ void video_debug_capture(void) {
     free(pixels);
 }
 
+/*
+ * FPS limit. Below 60 the game's frame keeps ticking at 60 Hz, so simulation, network and input run as
+ * at 60 fps; only presenting is rarer, and frames that will not be shown drop their draw calls.
+ * At 60 and above the limit paces the whole frame, as the launcher setting always did.
+ */
+extern bool gl_skip_draws;
+
+static int effective_fps_limit(void) {
+    extern bool reimagined_match_waiting(void);
+    if (g_opt.low_fps_paused > 0 && reimagined_match_waiting()) {
+        return g_opt.low_fps_paused;
+    }
+    return g_opt.fps_limit;
+}
+
+static void sleep_until(uint64_t *next, uint64_t interval) {
+    uint64_t now = monotonic_us();
+    if (!*next || now > *next + interval * 4) {
+        *next = now;
+    }
+    while (now + 1000 < *next) {
+        sleep_ms((uint32_t)((*next - now) / 1000u) ?: 1);
+        now = monotonic_us();
+    }
+    while (now < *next) { /* under 1 ms */
+        now = monotonic_us();
+    }
+    *next += interval;
+}
+
 void video_swap(void) {
     /* The presentation/HUD code uses native GL directly, outside guest thunks. */
     gl_state_invalidate();
     GLFN(void, glBindFramebuffer, uint32_t, uint32_t);
-    if (g_game_fbo) {
-        present_game();
+    extern void overlay_logic(void);
+    int limit = effective_fps_limit();
+    static uint64_t next_present, next_tick;
+    bool slow = limit > 0 && limit < 60;
+    uint64_t now = monotonic_us();
+    bool present = !slow || now >= next_present;
+    uint64_t swap0 = now;
+    if (present) {
+        if (slow) {
+            uint64_t interval = 1000000u / (uint64_t)limit;
+            next_present = now > next_present + interval ? now + interval : next_present + interval;
+        }
+        if (g_game_fbo) {
+            present_game();
+        }
+        overlay_draw(g_win_w, g_win_h);
+        video_debug_capture();
+        swap0 = monotonic_us();
+        SDL_GL_SwapWindow(g_window);
+        if (g_game_fbo) {
+            glBindFramebuffer(0x8d40, g_game_fbo);
+        }
+    } else {
+        overlay_logic();
     }
-    overlay_draw(g_win_w, g_win_h);
-    video_debug_capture();
-    uint64_t swap0 = monotonic_us();
-    SDL_GL_SwapWindow(g_window);
-    if (g_game_fbo) {
-        glBindFramebuffer(0x8d40, g_game_fbo);
-    }
-    if (g_swap_interval == 0) {
-        pace_frame();
+    if (slow) {
+        sleep_until(&next_tick, 1000000u / 60u);
+        /* draw only the frame that will be presented next */
+        gl_skip_draws = monotonic_us() + 1000000u / 60u < next_present;
+    } else {
+        gl_skip_draws = false;
+        if (g_swap_interval == 0) {
+            pace_frame();
+        }
     }
     g_perf.swap_us += monotonic_us() - swap0;
     input_after_swap();
     gl_state_invalidate();
+    logical_surface_restore();
     timer_frame_tick();
 }
 
@@ -648,6 +859,12 @@ IMPORT(glGetIntegerv) {
     GLFN(void, glGetIntegerv, uint32_t, int32_t *);
     int32_t *out = G2H(arg(1));
     switch (arg(0)) {
+    case 0x0ba2: /* VIEWPORT: what the game set, in its own coordinates */
+        memcpy(out, g_viewport, sizeof(g_viewport));
+        return;
+    case 0x0c10: /* SCISSOR_BOX */
+        memcpy(out, g_scissor, sizeof(g_scissor));
+        return;
     case GL_NUM_COMPRESSED_TEXTURE_FORMATS_ENUM:
         out[0] = g_pvrtc_textures ? 5 : 1;
         return;
@@ -679,6 +896,10 @@ IMPORT(glGetIntegerv) {
 IMPORT(glBindFramebuffer) {
     GLFN(void, glBindFramebuffer, uint32_t, uint32_t);
     glBindFramebuffer(arg(0), arg(1) ? arg(1) : g_game_fbo);
+    if (arg(0) != 0x8ca8 && g_default_bound != (arg(1) == 0)) { /* not READ only */
+        g_default_bound = arg(1) == 0;
+        logical_surface_restore();
+    }
 }
 
 static uint32_t remap_compressed(uint32_t format) {
@@ -1077,7 +1298,7 @@ IMPORT(glTexParameterxv) {
 void register_gl_thunks(void);
 
 static const char *const k_special[] = {
-    "glGetString", "glGetIntegerv", "glBindFramebuffer", "glTexImage2D", "glCompressedTexImage2D", "glCompressedTexSubImage2D",
+    "glGetString", "glGetIntegerv", "glBindFramebuffer", "glViewport", "glScissor", "glLineWidth", "glReadPixels", "glCopyTexImage2D", "glCopyTexSubImage2D", "glTexImage2D", "glCompressedTexImage2D", "glCompressedTexSubImage2D",
     "glShaderSource", "glCompileShader", "glTransformFeedbackVaryings", "glOrthof", "glOrthox", "glFrustumf",
     "glClipPlanef", "glClipPlanex", "glClearColorx", "glClearDepthx", "glDepthRangex",
     "glAlphaFuncx", "glColor4x", "glNormal3x", "glMultiTexCoord4x", "glTranslatex", "glScalex",
@@ -1101,6 +1322,12 @@ void register_gl_imports(void) {
     REG(glGetString);
     REG(glGetIntegerv);
     REG(glBindFramebuffer);
+    REG(glViewport);
+    REG(glScissor);
+    REG(glLineWidth);
+    REG(glReadPixels);
+    REG(glCopyTexImage2D);
+    REG(glCopyTexSubImage2D);
     REG(glTexImage2D);
     REG(glCompressedTexImage2D);
     REG(glCompressedTexSubImage2D);

@@ -120,8 +120,9 @@ static void override_original_name(uint32_t base) {
  * Found by its byte pattern (same function in the original and the reimagined build).
  */
 static void patch_frame_cap(const struct s3e_image *image) {
-    if (g_opt.fps_limit == 30) {
-        return; /* "30 (original)" keeps the game's own pacing */
+    extern bool video_surface_fixed(void);
+    if (g_opt.fps_limit == 30 && !video_surface_fixed()) {
+        return; /* "30 (original)" keeps the game's own pacing; Reimagined changes the limit live */
     }
     /* cmp r3,#2; ite eq; movs r3,#34; movs r3,#33 -- the 33/33/34 ms cycle; then walk back to
      * the function's push {r0-r4,lr} (the original and reimagined builds differ around it) */

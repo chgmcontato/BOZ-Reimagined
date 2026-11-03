@@ -22,6 +22,15 @@ void overlay_set_hint(const char *text) {
     (void)text;
 }
 
+/* Per-frame logic: it runs on every game frame, presented or not. */
+void overlay_logic(void) {
+    extern uint32_t video_game_fbo(void);
+    extern int video_render_width(void), video_render_height(void);
+    screens_capture(video_game_fbo(), video_render_width(), video_render_height());
+    reimagined_frame();
+    menus_frame();
+}
+
 void overlay_draw(int width, int height) {
     uint64_t now = monotonic_ms();
     g_fps_frames++;
@@ -76,10 +85,7 @@ void overlay_draw(int width, int height) {
             perf_frames = 0;
         }
     }
-    extern uint32_t video_game_fbo(void);
-    screens_capture(video_game_fbo(), video_width(), video_height());
-    reimagined_frame();
-    menus_frame();
+    overlay_logic();
 
     ui_begin(width, height);
     menus_draw();

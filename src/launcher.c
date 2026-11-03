@@ -529,15 +529,15 @@ static void draw_settings(void) {
 
     row(y, TR("Limite de FPS", "FPS limit"),
         TR("30 = ritmo original do jogo", "30 = the game's original pacing"));
-    static const int limits[] = {30, 60, 120, 144, 0};
-    const char *const limit_names[] = {"30", "60", "120", "144", TR("Sem limite", "Unlimited")};
-    int cur = 4;
-    for (int i = 0; i < 5; ++i) {
+    static const int limits[] = {5, 15, 30, 60, 120, 144, 0};
+    const char *const limit_names[] = {"5", "15", "30", "60", "120", "144", TR("Sem limite", "Unlimited")};
+    int cur = 6;
+    for (int i = 0; i < 7; ++i) {
         if (g_opt.fps_limit == limits[i]) {
             cur = i;
         }
     }
-    int lim = segmented(cx - 400, y + 6, 400, 32, limit_names, 5, cur);
+    int lim = segmented(cx - 400, y + 6, 400, 32, limit_names, 7, cur);
     changed |= limits[lim] != g_opt.fps_limit;
     g_opt.fps_limit = limits[lim];
     y += 44;
