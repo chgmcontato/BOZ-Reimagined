@@ -390,10 +390,14 @@ def cut_holes(s):
                 l["image"].putalpha(a)
 
 
+def native_only(s):
+    return s.name.startswith("native_")
+
+
 def compose(s):
     im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     for g in GROUPS:
-        if g in HIDDEN:
+        if g in HIDDEN and not (native_only(s) and g == "NATIVE_REFERENCE"):
             continue
         for l in s.layers:
             if l["group"] == g and l["visible"] is not False:
@@ -409,8 +413,9 @@ def save_psd(s, path):
             continue
         layers.append(Layer("</Layer group>", section=3))
         for l in items:
-            layers.append(Layer(l["name"], l["image"], l["left"], l["top"], visible=g not in HIDDEN and l["visible"] is not False))
-        layers.append(Layer(g, section=1, visible=g not in HIDDEN))
+            shown = g not in HIDDEN or native_only(s)
+            layers.append(Layer(l["name"], l["image"], l["left"], l["top"], visible=shown and l["visible"] is not False))
+        layers.append(Layer(g, section=1, visible=g not in HIDDEN or native_only(s)))
     guides = [(0, True), (W, True), (0, False), (H, False)]
     for hx, hy, hw, hh in s.holes:
         guides += [(hx * K, True), ((hx + hw) * K, True), (hy * K, False), ((hy + hh) * K, False)]
@@ -473,6 +478,11 @@ def main():
         os.makedirs(os.path.join(a.out, d), exist_ok=True)
     screens = build(art, styles, items)
     mapping = {"scale": K, "logical": [1280, 720], "psd": [W, H], "screens": {}}
+    # screens the game draws alone: a reference PSD only, nothing here is drawn by the port
+    if a.refs:
+        for fn in sorted(os.listdir(a.refs)):
+            if fn.startswith("native_") and fn.endswith(".png"):
+                screens[fn[:-4]] = Screen(fn[:-4], art)
     for n, s in screens.items():
         ref = a.refs and os.path.join(a.refs, n + ".png")
         if ref and os.path.exists(ref):

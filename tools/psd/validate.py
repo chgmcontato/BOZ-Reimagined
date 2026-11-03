@@ -24,6 +24,8 @@ for p in sorted(glob.glob(os.path.join(out, "psd", "*.psd"))):
         note += f" hole alpha={comp[3]}"
         ok = ok and comp[3] == 0
     bad += not ok
+    refs = [l for l in psd.descendants() if l.name.startswith("game capture")]
+    note += f" ref={len(refs)}"
     print(("OK " if ok else "BAD"), n, f"layers {count}/{want} groups {groups}{note}")
 print("failures:", bad)
 sys.exit(1 if bad else 0)

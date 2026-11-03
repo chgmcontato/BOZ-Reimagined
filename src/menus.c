@@ -1210,6 +1210,10 @@ void menus_draw(void) {
         return;
     }
     const char *screen = screens_current();
+    if (getenv("CODBOZ_HIDE_OVERLAY")) {
+        g_drawn_screen = screen;
+        return;
+    }
     if (g_curtain) {
         draw_curtain();
         return;

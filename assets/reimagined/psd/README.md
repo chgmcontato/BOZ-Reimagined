@@ -2,7 +2,7 @@
 
 Os arquivos gerados contêm arte do jogo instalado e **não vão para o Git**. Para gerá-los de novo:
 
-    python3 tools/psd/export_menus.py --assets build/game/reimagined/assets
+    python3 tools/psd/export_menus.py --assets build/game/reimagined/assets --refs assets/reimagined/psd/native
     python3 tools/psd/validate.py        # requer psd-tools
 
 ## Pastas
@@ -30,6 +30,12 @@ As guias marcam o viewport, as áreas clicáveis e as aberturas.
 | Áreas clicáveis | `build_targets`, `define_coop_pages` e `layout.json`/`screens.json` |
 | Cartões, menus e pausa nativos | Do jogo, não entram na arte. As aberturas ficam transparentes |
 
+## Referências nativas
+Com `--refs <pasta>`, cada `<tela>.png` entra em NATIVE_REFERENCE. Ela fica oculta nas telas do Reimagined e
+não entra nas prévias nem na arte. Arquivos `native_<tela>.png` viram PSDs só de referência (Perfil, Extras,
+Controles, Configurações, Ajuda, Sensibilidade, seleção de mapa do Coop e lobby), em que o port não desenha
+quase nada; a edição deles não volta para o jogo. Para capturar, use `CODBOZ_HIDE_OVERLAY=1`.
+
 ## Devolver alterações
 1. Edite sem renomear as camadas e devolva os PSDs em uma pasta.
 2. Rode `python3 tools/psd/import_menus.py <pasta>`.
@@ -42,3 +48,5 @@ As guias marcam o viewport, as áreas clicáveis e as aberturas.
 - Texto dinâmico mostra valores de exemplo: nome, mapa, round, status e timer.
 - O "PLAYERS" e a nota do Match Paused usam `comic.ttf` aqui; no jogo usam a fonte do corpo.
 - Não inclui o placar do Coop nem o HUD, desenhados com dados da partida.
+- As referências nativas são capturas achatadas, não camadas editáveis.
+- A referência de `pause_coop_box` e `leavecoop` vem de Coop forçado em partida Solo; `match_paused` mostra só uma partida Solo por trás.

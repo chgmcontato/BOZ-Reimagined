@@ -86,6 +86,10 @@ void overlay_draw(int width, int height) {
         }
     }
     overlay_logic();
+    if (getenv("CODBOZ_HIDE_OVERLAY")) { /* debug: capture the game's own screens */
+        menus_draw(); /* draws nothing here, but keeps the page input alive */
+        return;
+    }
 
     ui_begin(width, height);
     menus_draw();
