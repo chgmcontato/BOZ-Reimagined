@@ -288,6 +288,32 @@ static int retag_prompts(uint8_t *data, uint32_t size, char key) {
 }
 
 void codboz_pc_texts(const char *name, uint8_t *data, uint32_t size) {
+#ifdef CODBOZ_GLES
+    /* a phone: the TV build's button prompts become touch prompts (same length) */
+    {
+        int t = 0;
+        t += replace_same_size(data, size, "Press A to Start", "Touch to Start");
+        t += replace_same_size(data, size, "press a to start", "touch to start");
+        t += replace_same_size(data, size, "Press B to Start", "Touch to Start");
+        t += replace_same_size(data, size, "press b to start", "touch to start");
+        t += replace_same_size(data, size, "Double tap to swap your weapon.", "Tap SWAP to swap your weapon.");
+        t += replace_same_size(data, size, "Press [Y] to swap your weapon.", "Tap SWAP to swap your weapon.");
+        static const char *const heads[] = {"[A] to ", "[A] TO ", "[A] "};
+        for (size_t h = 0; h < sizeof(heads) / sizeof(heads[0]); ++h) {
+            size_t n = strlen(heads[h]);
+            for (uint8_t *p = data; p + n <= data + size; ++p) {
+                if ((p == data || p[-1] == 0) && memcmp(p, heads[h], n) == 0) {
+                    memcpy(p, "Tap", 3);
+                    t++;
+                }
+            }
+        }
+        if (t) {
+            log_info("%s: %d prompts set for touch", name, t);
+        }
+        return;
+    }
+#endif
     char use = key_letter(7 /* BIND_USE */, 'E');
     char swap = key_letter(13 /* BIND_SWITCH */, '1');
     char swap_text[40];

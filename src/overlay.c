@@ -94,6 +94,12 @@ void overlay_draw(int width, int height) {
     ui_begin(width, height);
     menus_draw();
     reimagined_draw();
+#ifdef CODBOZ_GLES
+    {
+        extern void input_draw_touch_controls(void);
+        input_draw_touch_controls();
+    }
+#endif
     if (g_opt.show_fps) {
         char text[32];
         snprintf(text, sizeof(text), "FPS %d", g_fps_value);

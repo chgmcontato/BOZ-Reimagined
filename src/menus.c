@@ -7,6 +7,15 @@
  * A press on a drawn button touches the Flash menu where the TV build touches it.
  */
 #include "menus.h"
+#ifdef CODBOZ_GLES /* a phone: touch wording */
+#define HINT_BACK "TAP: SELECT"
+#define HINT_RESUME "TAP: SELECT"
+#define HINT_START "TOUCH TO START"
+#else
+#define HINT_BACK "CLICK: SELECT     ESC: BACK"
+#define HINT_RESUME "CLICK: SELECT     ESC: RESUME"
+#define HINT_START "CLICK TO START"
+#endif
 #include "host.h"
 #include "reimagined.h"
 #include "screens.h"
@@ -132,7 +141,7 @@ bool input_has_controller(void);
 /* Footer hints for the device in use. */
 static const char *hint_select_back(void) {
     return input_has_controller() ? "D-PAD: NAVIGATE     A: SELECT     B: BACK"
-                                  : "CLICK: SELECT     ESC: BACK";
+                                  : HINT_BACK;
 }
 bool input_tap_busy(void);
 void input_cancel_tap(void);
@@ -803,7 +812,7 @@ static void draw_title(void) {
         return;
     }
     ui_image(&g_title, 0, 0, 1280, 720, 1.0f);
-    text(input_has_controller() ? "PRESS A TO START" : "CLICK TO START", 640, 660, 29, PAPER, 900,
+    text(input_has_controller() ? "PRESS A TO START" : HINT_START, 640, 660, 29, PAPER, 900,
          false, UI_CENTER);
 }
 
@@ -939,7 +948,7 @@ static void draw_page(const struct style *s, const char *id) {
     }
     hint(!s->hint[0] || strcmp(id, "gameover") == 0 ? hint_select_back()
          : input_has_controller() ? "D-PAD: NAVIGATE     A: SELECT     START: RESUME"
-                                  : "CLICK: SELECT     ESC: RESUME",
+                                  : HINT_RESUME,
          true);
 }
 

@@ -13,6 +13,9 @@
 #include "reimagined.h"
 #include "screens.h"
 #include "ui.h"
+#ifdef CODBOZ_GLES
+#include "touch_controls.h"
+#endif
 
 #include <SDL.h>
 #include <math.h>
@@ -501,7 +504,11 @@ static void set_captured(bool captured) {
     drag_release();
     g_captured = captured;
     log_info("mouse %s", captured ? "captured (camera)" : "released (cursor)");
+#ifndef CODBOZ_GLES /* a phone has no mouse to capture; the on-screen controls take the fingers */
     SDL_SetRelativeMouseMode(captured ? SDL_TRUE : SDL_FALSE);
+#else
+    touch_controls_reset();
+#endif
     g_mouse_dx = g_mouse_dy = 0;
     g_look_x = g_look_y = 0;
     if (captured) {
@@ -590,6 +597,11 @@ static int wants_capture(void) {
     }
     return -1; /* no way to know: Tab decides */
 }
+
+#ifdef CODBOZ_GLES
+static bool g_touch_hidden; /* a controller is being used: no buttons over the game */
+static void touch_finger(int64_t id, int phase, float x, float y);
+#endif
 
 static void handle_event(const SDL_Event *ev) {
     switch (ev->type) {
@@ -697,7 +709,27 @@ static void handle_event(const SDL_Event *ev) {
         }
         break;
     }
+#ifdef CODBOZ_GLES
+    case SDL_FINGERDOWN:
+    case SDL_FINGERMOTION:
+    case SDL_FINGERUP:
+        if (g_captured) {
+            int ww = 1, wh = 1;
+            float rx, ry;
+            SDL_GetWindowSize(video_window(), &ww, &wh);
+            ui_window_to_ref((int)(ev->tfinger.x * (float)ww), (int)(ev->tfinger.y * (float)wh), &rx, &ry);
+            touch_finger(ev->tfinger.fingerId,
+                         ev->type == SDL_FINGERDOWN ? TOUCH_DOWN
+                         : ev->type == SDL_FINGERUP ? TOUCH_UP : TOUCH_MOVE, rx, ry);
+        }
+        break;
+#endif
     case SDL_MOUSEMOTION:
+#ifdef CODBOZ_GLES
+        if (ev->motion.which == SDL_TOUCH_MOUSEID && g_captured) {
+            break; /* SDL's copy of a finger: the on-screen controls already have it */
+        }
+#endif
         if (g_captured) {
             g_mouse_dx += ev->motion.xrel;
             g_mouse_dy += ev->motion.yrel;
@@ -786,6 +818,9 @@ static void handle_event(const SDL_Event *ev) {
         }
         break;
     case SDL_CONTROLLERBUTTONDOWN:
+#ifdef CODBOZ_GLES
+        g_touch_hidden = true;
+#endif
         if (!g_captured) {
             SDL_GameControllerButton b = (SDL_GameControllerButton)ev->cbutton.button;
             int dir = b == SDL_CONTROLLER_BUTTON_DPAD_LEFT ? 0 : b == SDL_CONTROLLER_BUTTON_DPAD_RIGHT ? 1
@@ -901,6 +936,14 @@ static void script_run(void) {
                      (double)(now - g_script_start) / 1000.0);
             extern void video_request_shot(const char *path);
             video_request_shot(path);
+#ifdef CODBOZ_GLES
+        } else if (strncmp(step->cmd, "fdown", 5) == 0) { /* "T fdown0 X Y": a finger, on-screen controls */
+            touch_finger(step->cmd[5], TOUCH_DOWN, step->a, step->b);
+        } else if (strncmp(step->cmd, "fmove", 5) == 0) {
+            touch_finger(step->cmd[5], TOUCH_MOVE, step->a, step->b);
+        } else if (strncmp(step->cmd, "fup", 3) == 0) {
+            touch_finger(step->cmd[3], TOUCH_UP, step->a, step->b);
+#endif
         } else if (strcmp(step->cmd, "tap") == 0) {
             input_tap(step->a, step->b);
         } else if (strcmp(step->cmd, "key") == 0) {
@@ -937,6 +980,46 @@ static void script_run(void) {
     }
 }
 
+#ifdef CODBOZ_GLES
+static void touch_finger(int64_t id, int phase, float x, float y) {
+    if (phase == TOUCH_DOWN) {
+        g_touch_hidden = false;
+    }
+    touch_controls_finger(id, phase, x, y);
+    if (touch_controls_take_pause()) {
+        /* the Escape path: pause, free the cursor, Dead Ops' own button */
+        SDL_Event e;
+        memset(&e, 0, sizeof(e));
+        e.type = SDL_KEYDOWN;
+        e.key.state = SDL_PRESSED;
+        e.key.keysym.scancode = SDL_SCANCODE_ESCAPE;
+        handle_event(&e);
+        e.type = SDL_KEYUP;
+        e.key.state = SDL_RELEASED;
+        handle_event(&e);
+    }
+}
+
+/* Dead Ops has no aim or grenade: those buttons are its boost and special weapon. */
+static bool touch_action(int action) {
+    if (!g_captured) {
+        return false;
+    }
+    if (reimagined_deadops()) {
+        if (action == BIND_BOOST) return touch_controls_down(BIND_AIM);
+        if (action == BIND_NUKE) return touch_controls_down(BIND_GRENADE);
+        if (action == BIND_AIM || action == BIND_GRENADE) return false;
+    }
+    return touch_controls_down(action);
+}
+
+void input_draw_touch_controls(void) {
+    if (g_captured && !g_touch_hidden) {
+        touch_controls_draw();
+    }
+}
+#endif
+
 static void update_gameplay(float dt) {
     /* movement: WASD or left stick */
     const uint8_t *keys = SDL_GetKeyboardState(NULL);
@@ -954,6 +1037,20 @@ static void update_gameplay(float dt) {
         mx = g_script_move_x;
         my = g_script_move_y;
     }
+#ifdef CODBOZ_GLES
+    if (g_captured) {
+        float tx, ty, ldx, ldy;
+        touch_controls_move(&tx, &ty);
+        if (tx || ty) {
+            mx = tx;
+            my = ty;
+        }
+        /* reference units -> mouse counts: a thumb has far less travel than a mouse */
+        touch_controls_take_look(&ldx, &ldy);
+        g_mouse_dx += (int)lrintf(ldx * 2.0f);
+        g_mouse_dy += (int)lrintf(ldy * 2.0f);
+    }
+#endif
     float sx = axis(SDL_CONTROLLER_AXIS_LEFTX), sy = axis(SDL_CONTROLLER_AXIS_LEFTY);
     if (sx || sy) {
         mx = sx;
@@ -996,7 +1093,11 @@ static void update_gameplay(float dt) {
         if (g_drag_down) {
             drag_release();
         }
+#ifdef CODBOZ_GLES
+        if (!lx && !ly && (bindings_down(BIND_SHOOT, true, NULL) || touch_action(BIND_SHOOT))) {
+#else
         if (!lx && !ly && bindings_down(BIND_SHOOT, true, NULL)) {
+#endif
             float n = sqrtf(aim_x * aim_x + aim_y * aim_y);
             lx = aim_x / n;
             ly = aim_y / n;
@@ -1081,6 +1182,9 @@ static void update_gameplay(float dt) {
         /* in menus the controller drives the focus (handle_event), not the game keys */
         uint8_t down = (uint8_t)bindings_down((enum bind_action)a, g_captured,
                                                g_captured || a == BIND_PAUSE ? g_controller : NULL);
+#ifdef CODBOZ_GLES
+        down |= (uint8_t)touch_action(a);
+#endif
         if (a == BIND_SCOREBOARD) {
             reimagined_set_scoreboard(down != 0); /* drawn by the host: nothing reaches the game */
             continue;

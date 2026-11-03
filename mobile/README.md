@@ -166,9 +166,11 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties   # ou abra a pasta no Andro
 4. No primeiro PLAY o runtime instala o jogo a partir do APK (como o `--install` do PC) e abre o
    jogo direto, sem o launcher.
 
-Para este teste: o toque funciona como o mouse do PC (um dedo; clica nos menus). O HUD de toque
-continua escondido, porque é o `boz.s3e` da TV, então dentro da partida use um **controle Bluetooth
-(padrão Xbox)**. O botão Voltar do Android fecha o jogo.
+Nos menus, o toque funciona como o mouse do PC. Na partida, os controles de toque são do runtime
+(`src/touch_controls.c`, só no Android): joystick flutuante à esquerda, arrasto à direita para a câmera
+e botões FIRE (também gira a câmera), AIM, RELOAD, USE, GREN, KNIFE, SWAP, TACT e CROUCH, mais a pausa no
+canto superior esquerdo. Eles somem ao usar um controle Bluetooth e voltam no próximo toque. O botão
+Voltar do Android fecha o jogo.
 
 ### Diagnóstico gravado no log (builds desta etapa)
 
@@ -259,9 +261,8 @@ cmake --build /tmp/boz-gles && SDL_VIDEO_X11_FORCE_EGL=1 /tmp/boz-gles/boz-runti
 
 - **Não validado no aparelho.** O Mesa não é o driver do S24 FE (ANGLE + Xclipse), que pode recusar o
   que o Mesa aceita. Nada acima prova que o jogo roda no aparelho: é o próximo passo.
-- **HUD de toque escondido:** o `boz.s3e` da TV esconde os botões de toque e troca o recarregar.
-  Desfazer esses patches de entrada na memória, só no Mobile, é da Etapa 6. Por enquanto a partida
-  se joga com controle.
+- **Controles de toque novos:** posições e sensibilidade são um primeiro ajuste, sem opção de configurar.
+  O HUD nativo do jogo continua escondido pelos patches da TV.
 - **Nome do jogador:** não há tela para isso no Mobile ainda; o jogo usa o padrão do launcher.
 - **Voltar** fecha o jogo (comportamento padrão do SDL). **Saves** ficam na pasta do app e somem se
   ele for desinstalado.
