@@ -18,8 +18,7 @@
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
-        android:hardwareAccelerated="true"
-        android:extractNativeLibs="false">
+        android:hardwareAccelerated="true">
 
         <!-- picks the player's own files (Storage Access Framework) and starts the game -->
         <activity

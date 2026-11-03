@@ -94,6 +94,11 @@ android {
                 arguments += listOf(
                     "-DBOZ_SDL2_SOURCE_DIR=${sdl2Dir.absolutePath}",
                     "-DBOZ_BOOST_INCLUDE_DIR=${boostDir.absolutePath}",
+                    // two C++ libraries in the app (SDL's hidapi, Dynarmic): one shared libc++,
+                    // as the NDK recommends; AGP packages libc++_shared.so
+                    "-DANDROID_STL=c++_shared",
+                    // ELF segments aligned for 16 KiB-page devices too (Android 15+)
+                    "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
                 )
             }
         }
@@ -125,6 +130,8 @@ android {
 
     packaging {
         jniLibs {
+            // uncompressed and page-aligned, loaded straight from the APK (AGP default for minSdk 23+)
+            useLegacyPackaging = false
             keepDebugSymbols += "**/*.so" // readable native crash dumps from the PoC
         }
     }
