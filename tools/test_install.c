@@ -662,7 +662,16 @@ static void test_macho_cmdsize_wrap(void) {
 
 /* I6: relocation offsets near 4 GiB (off + 4 wraps) and fixup records whose size wraps. */
 static void test_ios_relocations(void) {
-    /* the I6 fix fills this in */
+    struct ios_fields f = {0};
+    f.reloc0 = 0xfffffffcu; /* a key probe */
+    f.reloc0_set = 1;
+    ipa_expect_rejected("i6-reloc-probe", f);
+    struct ios_fields last = {0};
+    last.reloc_last = 0xfffffffdu; /* only the final check reads it */
+    ipa_expect_rejected("i6-reloc-check", last);
+    struct ios_fields wrap = {0};
+    wrap.fix_record_size = 0xfffffff8u; /* 76 + size wraps to 68, the record before: a loop */
+    ipa_expect_rejected("i6-fixup-wrap", wrap);
 }
 
 /* I8: an install that fails halfway must not look complete, also over an earlier good install. */

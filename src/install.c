@@ -429,29 +429,30 @@ static uint8_t *ios_image_from_exe(const uint8_t *exe, size_t exe_size, size_t *
             break;
         }
     }
-    if (!h || text.addr + text.size != data.addr) {
+    if (!h || (uint64_t)text.addr + text.size != data.addr) {
         snprintf(error, error_size, "Formato da imagem do jogo no IPA nao reconhecido.");
         return NULL;
     }
     uint32_t meta_left = meta.size - (uint32_t)(h - (m + meta.offset));
     uint32_t fix_off = rd32(h + 12), fix_size = rd32(h + 16), code_off = rd32(h + 20);
     uint32_t code_file = rd32(h + 24), code_mem = rd32(h + 28), base = rd32(h + 52);
-    if (code_off > meta_left || (uint64_t)fix_off + fix_size > code_off || code_file > text.size + data.size ||
-        code_file <= text.size) {
+    if (code_off > meta_left || (uint64_t)fix_off + fix_size > code_off ||
+        code_file > (uint64_t)text.size + data.size || code_file <= text.size || code_file < 4) {
         snprintf(error, error_size, "Cabecalho da imagem do jogo no IPA invalido.");
         return NULL;
     }
     /* relocation table (fixup record type 1): u32 count, then u32 code offsets */
-    const uint32_t *relocs = NULL;
+    const uint8_t *relocs = NULL;
     uint32_t reloc_count = 0;
-    for (uint32_t pos = fix_off; pos + 12 <= fix_off + fix_size;) {
+    const uint32_t fix_end = fix_off + fix_size; /* <= code_off, checked above */
+    for (uint32_t pos = fix_off; pos + 12 <= fix_end;) {
         uint32_t type = rd32(h + pos), size = rd32(h + pos + 4);
-        if (size < 8 || pos + size > fix_off + fix_size) {
+        if (size < 8 || size > fix_end - pos) { /* pos + size could wrap and loop forever */
             break;
         }
         if (type == 1 && size >= 12 && rd32(h + pos + 8) <= (size - 12) / 4) {
             reloc_count = rd32(h + pos + 8);
-            relocs = (const uint32_t *)(h + pos + 12);
+            relocs = h + pos + 12;
         }
         pos += size;
     }
@@ -476,8 +477,8 @@ static uint8_t *ios_image_from_exe(const uint8_t *exe, size_t exe_size, size_t *
     /* key search on the first relocations that land in the data part */
     uint32_t probe[32], probes = 0, limit = 0;
     for (uint32_t i = 0; i < reloc_count && probes < 32; ++i) {
-        uint32_t off = rd32((const uint8_t *)&relocs[i]);
-        if (off >= text.size && off + 4 <= code_file) {
+        uint32_t off = rd32(relocs + 4 * (size_t)i);
+        if (off >= text.size && off <= code_file - 4) { /* off + 4 could wrap */
             probe[probes++] = off - text.size;
             if (off - text.size + 4 > limit) limit = off - text.size + 4;
         }
@@ -495,7 +496,7 @@ static uint8_t *ios_image_from_exe(const uint8_t *exe, size_t exe_size, size_t *
         uint32_t hit = 0;
         for (uint32_t i = 0; i < probes; ++i) {
             uint32_t w = rd32(scratch + probe[i]);
-            hit += w >= base && w < base + code_mem;
+            hit += w >= base && w < (uint64_t)base + code_mem;
         }
         if (hit == probes) key = (long)k;
     }
@@ -509,9 +510,9 @@ static uint8_t *ios_image_from_exe(const uint8_t *exe, size_t exe_size, size_t *
 
     uint32_t bad = 0;
     for (uint32_t i = 0; i < reloc_count; ++i) {
-        uint32_t off = rd32((const uint8_t *)&relocs[i]);
-        uint32_t w = off + 4 <= code_file ? rd32(code + off) : 0;
-        bad += !(w >= base && w < base + code_mem);
+        uint32_t off = rd32(relocs + 4 * (size_t)i);
+        uint32_t w = off <= code_file - 4 ? rd32(code + off) : 0;
+        bad += !(w >= base && w < (uint64_t)base + code_mem);
     }
     if (bad) {
         free(out);
