@@ -650,7 +650,14 @@ static void test_size_as_int(void) {
 
 /* I5: a load command whose size wraps pos + cmdsize around 32 bits. */
 static void test_macho_cmdsize_wrap(void) {
-    /* the I5 fix fills this in */
+    struct ios_fields f = {0};
+    f.cmdsize = 0xfffffff0u;
+    f.nsects = 0x03ffffffu;
+    f.rename_sections = 1;
+    ipa_expect_rejected("i5-cmdsize-wrap", f);
+    struct ios_fields past = {0};
+    past.cmdsize = IOS_EXE_SIZE; /* runs past the end of the executable */
+    ipa_expect_rejected("i5-cmdsize-past", past);
 }
 
 /* I6: relocation offsets near 4 GiB (off + 4 wraps) and fixup records whose size wraps. */

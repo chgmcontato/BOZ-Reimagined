@@ -356,7 +356,7 @@ static uint32_t be32(const uint8_t *p) {
 static long armv7_slice(const uint8_t *exe, size_t size) {
     if (size >= 8 && be32(exe) == 0xcafebabeu) {
         uint32_t n = be32(exe + 4);
-        for (uint32_t i = 0; i < n && 8 + (i + 1) * 20 <= size; ++i) {
+        for (uint32_t i = 0; i < n && 8 + ((size_t)i + 1) * 20 <= size; ++i) {
             const uint8_t *a = exe + 8 + i * 20;
             if (be32(a) == 12 /* ARM */ && be32(a + 4) == 9 /* V7 */ && be32(a + 8) < size) {
                 return (long)be32(a + 8);
@@ -375,7 +375,7 @@ static bool macho_find(const uint8_t *m, size_t size, const char *seg, const cha
     uint32_t ncmds = rd32(m + 16), pos = 28;
     for (uint32_t i = 0; i < ncmds && pos + 8 <= size; ++i) {
         uint32_t cmd = rd32(m + pos), cmdsize = rd32(m + pos + 4);
-        if (cmdsize < 8 || pos + cmdsize > size) {
+        if (cmdsize < 8 || cmdsize > size - pos) { /* pos + cmdsize could wrap around */
             return false;
         }
         if (cmd == 1 /* LC_SEGMENT */ && cmdsize >= 56) {
