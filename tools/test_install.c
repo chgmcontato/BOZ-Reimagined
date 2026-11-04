@@ -676,7 +676,50 @@ static void test_ios_relocations(void) {
 
 /* I8: an install that fails halfway must not look complete, also over an earlier good install. */
 static void test_install_is_atomic(void) {
-    /* the I8 fix fills this in */
+    char apk[1024], good[1024], root[1024], error[256] = "";
+    enum game_mode mode = MODE_COUNT;
+    static const uint8_t bad_deflate[] = {0xff, 0xff, 0xff, 0xff}; /* BTYPE 3: invalid */
+    zip z = {0};
+    path_of(apk, sizeof(apk), "i8-broken-after-image.apk");
+    apk_entries(&z); /* boz.s3e comes first and decodes fine */
+    zip_add(&z, "assets/zz/broken.bin", 8, bad_deflate, sizeof(bad_deflate), 16);
+    zip_write(&z, apk);
+    expect_rejected("i8-broken-after-image", apk, MODE_ORIGINAL);
+    CHECK(!file_exists(g_tmp, "root-i8-broken-after-image/original/assets/boz.s3e.unpacked") &&
+              !file_exists(g_tmp, "root-i8-broken-after-image/original/assets/boz.s3e.unpacked.part"),
+          "i8: the game image of a failed install is not left behind");
+
+    /* a good install, then a failing reinstall over it */
+    path_of(good, sizeof(good), "i8-good.apk");
+    apk_entries(&z);
+    zip_write(&z, good);
+    new_root(root, sizeof(root), "root-i8-reinstall");
+    CHECK(install_package(good, root, &mode, error, sizeof(error)), "i8 first install: %s", error);
+    CHECK(install_package(good, root, &mode, error, sizeof(error)), "i8 reinstall: %s", error);
+    CHECK(install_present(root, MODE_ORIGINAL), "i8: a reinstall over an install succeeds");
+    CHECK(!file_exists(root, "original/assets/boz.s3e.unpacked.part") &&
+              !file_exists(root, "original/assets/data/menu.txt.part"),
+          "i8: no .part files after a good install");
+    CHECK(!install_package(apk, root, &mode, error, sizeof(error)), "i8: broken reinstall accepted");
+    CHECK(!install_present(root, MODE_ORIGINAL),
+          "i8: a failed reinstall leaves the install marked complete");
+
+    /* IPA: a good install, then a reinstall whose blackops_gles1.dz is broken */
+    char ipa[1024], broken[1024];
+    path_of(ipa, sizeof(ipa), "i8-good.ipa");
+    path_of(broken, sizeof(broken), "i8-broken-gles1.ipa");
+    struct ios_fields valid = {0};
+    uint8_t *exe = ios_exe(valid, NULL, NULL);
+    ipa_write(ipa, exe);
+    zip_add(&z, "Payload/BOZ.app/BOZ", 0, exe, IOS_EXE_SIZE, IOS_EXE_SIZE);
+    zip_add(&z, "Payload/BOZ.app/blackops_gles1.dz", 8, bad_deflate, sizeof(bad_deflate), 16);
+    zip_write(&z, broken);
+    free(exe);
+    new_root(root, sizeof(root), "root-i8-ipa");
+    CHECK(install_package(ipa, root, &mode, error, sizeof(error)), "i8 IPA install: %s", error);
+    CHECK(!install_package(broken, root, &mode, error, sizeof(error)), "i8: broken IPA accepted");
+    CHECK(!install_present(root, MODE_IOS),
+          "i8: a failed IPA reinstall leaves the install marked complete");
 }
 
 /* Archives that are simply not the game, rejected by the original installer too. */

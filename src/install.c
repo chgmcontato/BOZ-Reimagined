@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 
 #ifdef _WIN32
+#include <windows.h>
 #include <direct.h>
 #define mkdir_one(p) _mkdir(p)
 #else
@@ -65,15 +66,55 @@ static void make_dirs_for(const char *path) {
     }
 }
 
-static int write_file(const char *path, const void *data, size_t size) {
+/* Files are written as <path>.part and renamed into place, so a failed or interrupted write
+ * never leaves a truncated file under the real name. */
+static int part_path(char *out, size_t size, const char *path) {
+    return snprintf(out, size, "%s.part", path) < (int)size;
+}
+
+static int write_part(const char *path, const void *data, size_t size) {
+    char part[1500];
+    if (!part_path(part, sizeof(part), path)) {
+        return 0;
+    }
     make_dirs_for(path);
-    FILE *f = fopen(path, "wb");
+    FILE *f = fopen(part, "wb");
     if (!f) {
         return 0;
     }
     int ok = fwrite(data, 1, size, f) == size;
-    fclose(f);
+    ok &= fclose(f) == 0;
+    if (!ok) {
+        remove(part);
+    }
     return ok;
+}
+
+static int commit_part(const char *path) {
+    char part[1500];
+    if (!part_path(part, sizeof(part), path)) {
+        return 0;
+    }
+#ifdef _WIN32
+    int ok = MoveFileExA(part, path, MOVEFILE_REPLACE_EXISTING) != 0;
+#else
+    int ok = rename(part, path) == 0;
+#endif
+    if (!ok) {
+        remove(part);
+    }
+    return ok;
+}
+
+static void drop_part(const char *path) {
+    char part[1500];
+    if (part_path(part, sizeof(part), path)) {
+        remove(part);
+    }
+}
+
+static int write_file(const char *path, const void *data, size_t size) {
+    return write_part(path, data, size) && commit_part(path);
 }
 
 static struct zip_entry *read_central_directory(FILE *f, int *count) {
@@ -250,6 +291,8 @@ static int has_entry(const struct zip_entry *entries, int count, const char *nam
     return 0;
 }
 
+/* boz.s3e.unpacked is what install_present() looks for: it is removed first and written last,
+ * so an install that fails halfway is never taken for a complete one. */
 int install_apk(const char *apk_path, const char *root, enum game_mode *mode_out, char *error,
                 size_t error_size) {
     FILE *f = fopen(apk_path, "rb");
@@ -267,10 +310,12 @@ int install_apk(const char *apk_path, const char *root, enum game_mode *mode_out
     }
     enum game_mode mode =
         has_entry(entries, count, "assets/boz_menus.json") ? MODE_REIMAGINED : MODE_ORIGINAL;
-    char dir[1100];
+    char dir[1100], marker[1400];
     snprintf(dir, sizeof(dir), "%s/%s/assets", root, mode == MODE_REIMAGINED ? "reimagined" : "original");
-    int written = 0;
-    for (int i = 0; i < count; ++i) {
+    snprintf(marker, sizeof(marker), "%s/boz.s3e.unpacked", dir);
+    remove(marker);
+    int written = 0, image_ready = 0, ok = 1;
+    for (int i = 0; i < count && ok; ++i) {
         const struct zip_entry *e = &entries[i];
         size_t len = strlen(e->name);
         if (strncmp(e->name, "assets/", 7) != 0 || e->name[len - 1] == '/' ||
@@ -280,38 +325,47 @@ int install_apk(const char *apk_path, const char *root, enum game_mode *mode_out
         uint8_t *data = read_entry(f, e);
         if (!data) {
             snprintf(error, error_size, "Falha ao ler %s do APK.", e->name);
-            fclose(f);
-            free(entries);
-            return 0;
+            ok = 0;
+            break;
         }
         char path[1400];
         snprintf(path, sizeof(path), "%s/%s", dir, e->name + 7);
         if (!write_file(path, data, e->size)) {
-            free(data);
             snprintf(error, error_size, "Falha ao gravar %s.", path);
-            fclose(f);
-            free(entries);
-            return 0;
-        }
-        if (strcmp(e->name, "assets/boz.s3e") == 0) {
+            ok = 0;
+        } else if (strcmp(e->name, "assets/boz.s3e") == 0) {
             size_t raw_len = 0;
             uint8_t *raw = lzma_alone_decode(data, e->size, &raw_len);
             if (!raw) {
-                free(data);
                 snprintf(error, error_size, "Falha ao descompactar o boz.s3e.");
-                fclose(f);
-                free(entries);
-                return 0;
+                ok = 0;
+            } else if (!write_part(marker, raw, raw_len)) {
+                snprintf(error, error_size, "Falha ao gravar %s.", marker);
+                ok = 0;
+            } else {
+                image_ready = 1;
             }
-            snprintf(path, sizeof(path), "%s/boz.s3e.unpacked", dir);
-            write_file(path, raw, raw_len);
             free(raw);
         }
         free(data);
-        written++;
+        written += ok;
+    }
+    if (ok && !image_ready) {
+        snprintf(error, error_size, "Este arquivo nao e o APK do Black Ops Zombies.");
+        ok = 0;
+    }
+    if (ok && !commit_part(marker)) {
+        snprintf(error, error_size, "Falha ao gravar %s.", marker);
+        ok = 0;
+    }
+    if (!ok) {
+        drop_part(marker);
     }
     fclose(f);
     free(entries);
+    if (!ok) {
+        return 0;
+    }
     log_info("installed %d files from %s into %s", written, apk_path, dir);
     *mode_out = mode;
     return 1;
@@ -548,8 +602,11 @@ int install_ipa(const char *ipa_path, const char *root, char *error, size_t erro
         snprintf(error, error_size, "Este arquivo nao e um IPA.");
         return 0;
     }
-    char dir[1100];
+    char dir[1100], marker[1400];
     snprintf(dir, sizeof(dir), "%s/ios/assets", root);
+    /* as in install_apk: the game image is removed first and written last */
+    snprintf(marker, sizeof(marker), "%s/boz.s3e.unpacked", dir);
+    remove(marker);
     const struct zip_entry *gles1 = NULL;
     uint8_t *image = NULL;
     size_t image_size = 0;
@@ -606,12 +663,6 @@ int install_ipa(const char *ipa_path, const char *root, char *error, size_t erro
         ok = 0;
     }
     if (ok) {
-        char path[1400];
-        snprintf(path, sizeof(path), "%s/boz.s3e.unpacked", dir);
-        ok = write_file(path, image, image_size);
-        if (!ok) snprintf(error, error_size, "Falha ao gravar %s.", path);
-    }
-    if (ok) {
         uint8_t *data = read_entry(f, gles1);
         char path[1400];
         snprintf(path, sizeof(path), "%s/blackops_gles1.dz", dir);
@@ -619,6 +670,10 @@ int install_ipa(const char *ipa_path, const char *root, char *error, size_t erro
         if (!ok) snprintf(error, error_size, "Falha ao extrair blackops_gles1.dz.");
         free(data);
         written += ok;
+    }
+    if (ok) {
+        ok = write_file(marker, image, image_size);
+        if (!ok) snprintf(error, error_size, "Falha ao gravar %s.", marker);
     }
     free(image);
     fclose(f);
