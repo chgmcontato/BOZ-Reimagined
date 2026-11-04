@@ -119,7 +119,15 @@ static struct zip_entry *read_central_directory(FILE *f, int *count) {
     return entries;
 }
 
+/* The entry's data, e->size bytes long (callers rely on that length). */
 static uint8_t *read_entry(FILE *f, const struct zip_entry *e) {
+    if (e->method != 0 && e->method != 8) {
+        return NULL;
+    }
+    /* stored: the bytes on disk are the file, so a bigger size would read past them */
+    if (e->method == 0 && e->comp_size != e->size) {
+        return NULL;
+    }
     uint8_t local[30];
     fseek(f, (long)e->local_offset, SEEK_SET);
     if (fread(local, 1, 30, f) != 30 || rd32(local) != 0x04034b50u) {
@@ -133,10 +141,6 @@ static uint8_t *read_entry(FILE *f, const struct zip_entry *e) {
     }
     if (e->method == 0) {
         return comp;
-    }
-    if (e->method != 8) {
-        free(comp);
-        return NULL;
     }
     uint8_t *out = malloc(e->size ? e->size : 1);
     int n = stbi_zlib_decode_noheader_buffer((char *)out, (int)e->size, (const char *)comp,

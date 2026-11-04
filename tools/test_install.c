@@ -504,7 +504,30 @@ static void ipa_expect_rejected(const char *label, struct ios_fields f) {
 
 /* I1: a stored entry whose uncompressed size is bigger than its data. */
 static void test_stored_size_mismatch(void) {
-    /* the I1 fix fills this in */
+    char apk[1024];
+    path_of(apk, sizeof(apk), "i1-stored-image.apk");
+    zip z = {0};
+    struct zip_fields big = {sizeof(k_image_lzma), 4096, 0, 0};
+    zip_add_fields(&z, "assets/boz.s3e", 0, k_image_lzma, sizeof(k_image_lzma), big);
+    zip_write(&z, apk);
+    expect_rejected("i1-stored-image", apk, MODE_ORIGINAL);
+
+    path_of(apk, sizeof(apk), "i1-stored-asset.apk");
+    struct zip_fields asset = {4, 65536, 0, 0};
+    zip_add_fields(&z, "assets/data/leak.bin", 0, "leak", 4, asset);
+    apk_entries(&z);
+    zip_write(&z, apk);
+    expect_rejected("i1-stored-asset", apk, MODE_ORIGINAL);
+
+    char ipa[1024];
+    path_of(ipa, sizeof(ipa), "i1-stored-exe.ipa");
+    struct ios_fields valid = {0};
+    uint8_t *exe = ios_exe(valid, NULL, NULL);
+    zip_add(&z, "Payload/BOZ.app/BOZ", 0, exe, IOS_EXE_SIZE, IOS_EXE_SIZE + 65536);
+    zip_add(&z, "Payload/BOZ.app/blackops_gles1.dz", 0, "dz", 2, 2);
+    zip_write(&z, ipa);
+    free(exe);
+    expect_rejected("i1-stored-exe", ipa, MODE_IOS);
 }
 
 /* I2: a central directory entry whose name runs past the end of the directory. */
