@@ -84,8 +84,8 @@ static struct zip_entry *read_central_directory(FILE *f, int *count) {
         return NULL;
     }
     long tail = size < 70000 ? (long)size : 70000;
-    uint8_t *buf = malloc((size_t)tail);
-    if (file_seek(f, size - tail, SEEK_SET) != 0 ||
+    uint8_t *buf = malloc(tail ? (size_t)tail : 1);
+    if (!buf || file_seek(f, size - tail, SEEK_SET) != 0 ||
         fread(buf, 1, (size_t)tail, f) != (size_t)tail) {
         free(buf);
         return NULL;
@@ -104,12 +104,21 @@ static struct zip_entry *read_central_directory(FILE *f, int *count) {
     int n = rd16(buf + eocd + 10);
     uint32_t cd_size = rd32(buf + eocd + 12), cd_offset = rd32(buf + eocd + 16);
     free(buf);
+    /* the central directory sits before the end record, inside the file */
+    file_off eocd_at = size - tail + eocd;
+    if (n == 0 || cd_size == 0 || (file_off)cd_offset + (file_off)cd_size > eocd_at) {
+        return NULL;
+    }
     uint8_t *cd = malloc(cd_size);
-    if (file_seek(f, (file_off)cd_offset, SEEK_SET) != 0 || fread(cd, 1, cd_size, f) != cd_size) {
+    if (!cd || file_seek(f, (file_off)cd_offset, SEEK_SET) != 0 || fread(cd, 1, cd_size, f) != cd_size) {
         free(cd);
         return NULL;
     }
     struct zip_entry *entries = calloc((size_t)n, sizeof(*entries));
+    if (!entries) {
+        free(cd);
+        return NULL;
+    }
     uint32_t pos = 0;
     int got = 0;
     for (int i = 0; i < n && pos + 46 <= cd_size; ++i) {
@@ -153,12 +162,20 @@ static uint8_t *read_entry(FILE *f, const struct zip_entry *e) {
         rd32(local) != 0x04034b50u) {
         return NULL;
     }
-    if (file_seek(f, (file_off)e->local_offset + 30 + rd16(local + 26) + rd16(local + 28),
-                  SEEK_SET) != 0) {
+    /* deflate cannot shrink data more than ~1032:1, so a bigger size is a lie */
+    if (e->method == 8 && (uint64_t)e->size > (uint64_t)e->comp_size * 1032u + 1024u) {
+        return NULL;
+    }
+    file_off data = (file_off)e->local_offset + 30 + rd16(local + 26) + rd16(local + 28);
+    if (file_seek(f, 0, SEEK_END) != 0) {
+        return NULL;
+    }
+    file_off end = file_tell(f);
+    if (end < data || (file_off)e->comp_size > end - data || file_seek(f, data, SEEK_SET) != 0) {
         return NULL;
     }
     uint8_t *comp = malloc(e->comp_size ? e->comp_size : 1);
-    if (fread(comp, 1, e->comp_size, f) != e->comp_size) {
+    if (!comp || fread(comp, 1, e->comp_size, f) != e->comp_size) {
         free(comp);
         return NULL;
     }
@@ -166,6 +183,10 @@ static uint8_t *read_entry(FILE *f, const struct zip_entry *e) {
         return comp;
     }
     uint8_t *out = malloc(e->size ? e->size : 1);
+    if (!out) {
+        free(comp);
+        return NULL;
+    }
     int n = stbi_zlib_decode_noheader_buffer((char *)out, (int)e->size, (const char *)comp,
                                              (int)e->comp_size);
     free(comp);
@@ -199,6 +220,9 @@ static uint8_t *lzma_alone_decode(const uint8_t *src, size_t src_len, size_t *ou
         return NULL;
     }
     uint8_t *out = malloc((size_t)size);
+    if (!out) {
+        return NULL;
+    }
     SizeT dest_len = (SizeT)size, in_len = src_len - 13;
     ELzmaStatus status;
     ISzAlloc alloc = {lzma_alloc, lzma_free};
@@ -453,6 +477,11 @@ static uint8_t *ios_image_from_exe(const uint8_t *exe, size_t exe_size, size_t *
         }
     }
     uint8_t *scratch = malloc(limit ? limit : 1);
+    if (!scratch) {
+        free(out);
+        snprintf(error, error_size, "Memoria insuficiente.");
+        return NULL;
+    }
     long key = -1;
     for (uint32_t k = 0; probes && k < 65536 && key < 0; ++k) {
         memcpy(scratch, m + data.offset, limit);

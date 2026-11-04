@@ -574,7 +574,61 @@ static void test_big_file(void) {
 
 /* I3: sizes and offsets taken from the file must fit in the file before anything is allocated. */
 static void test_sizes_past_the_file(void) {
-    /* the I3 fix fills this in */
+    char apk[1024];
+    zip z = {0};
+    struct eocd_fields e = {0};
+
+    path_of(apk, sizeof(apk), "i3-cd-size.apk");
+    apk_entries(&z);
+    e.cd_size = 0xfffffff0u; /* a 4 GiB central directory */
+    zip_write_eocd(&z, apk, e);
+    expect_rejected("i3-cd-size", apk, MODE_ORIGINAL);
+
+    path_of(apk, sizeof(apk), "i3-cd-offset.apk");
+    apk_entries(&z);
+    e.cd_size = 0;
+    e.cd_offset = 0x7ffffff0u; /* past the end of the file */
+    zip_write_eocd(&z, apk, e);
+    expect_rejected("i3-cd-offset", apk, MODE_ORIGINAL);
+
+    path_of(apk, sizeof(apk), "i3-cd-count.apk");
+    apk_entries(&z);
+    e.cd_offset = 0;
+    e.count = 0xffff; /* more entries than the directory holds: the real ones still install */
+    zip_write_eocd(&z, apk, e);
+    char root[1024], error[256] = "";
+    new_root(root, sizeof(root), "root-i3-cd-count");
+    enum game_mode mode = MODE_COUNT;
+    CHECK(install_package(apk, root, &mode, error, sizeof(error)), "i3-cd-count: %s", error);
+
+    /* stored entry claiming 3.75 GiB of data in a small file */
+    path_of(apk, sizeof(apk), "i3-entry-size.apk");
+    struct zip_fields huge = {0xf0000000u, 0xf0000000u, 0, 0};
+    zip_add_fields(&z, "assets/boz.s3e", 0, k_image_lzma, sizeof(k_image_lzma), huge);
+    zip_write(&z, apk);
+    expect_rejected("i3-entry-size", apk, MODE_ORIGINAL);
+
+    /* deflated entry claiming 2 GiB out of 44 bytes */
+    path_of(apk, sizeof(apk), "i3-deflate-ratio.apk");
+    zip_add(&z, "assets/boz.s3e", 8, k_text_deflate, sizeof(k_text_deflate), 0x7fff0000u);
+    zip_write(&z, apk);
+    expect_rejected("i3-deflate-ratio", apk, MODE_ORIGINAL);
+
+    /* local header offset past the end of the file */
+    path_of(apk, sizeof(apk), "i3-local-offset.apk");
+    zip_add(&z, "assets/boz.s3e", 0, k_image_lzma, sizeof(k_image_lzma), sizeof(k_image_lzma));
+    set32(z.cd.p + 42, 0x40000000u);
+    zip_write(&z, apk);
+    expect_rejected("i3-local-offset", apk, MODE_ORIGINAL);
+
+    /* LZMA header asking for 256 MiB that the stream cannot fill */
+    path_of(apk, sizeof(apk), "i3-lzma-size.apk");
+    uint8_t lzma[sizeof(k_image_lzma)];
+    memcpy(lzma, k_image_lzma, sizeof(lzma));
+    set32(lzma + 5, 256u << 20);
+    zip_add(&z, "assets/boz.s3e", 0, lzma, sizeof(lzma), sizeof(lzma));
+    zip_write(&z, apk);
+    expect_rejected("i3-lzma-size", apk, MODE_ORIGINAL);
 }
 
 /* I4: a deflated entry of size 0xffffffff, whose int cast is the decoder's -1 failure value. The
