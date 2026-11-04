@@ -634,7 +634,18 @@ static void test_sizes_past_the_file(void) {
 /* I4: a deflated entry of size 0xffffffff, whose int cast is the decoder's -1 failure value. The
  * data is 4.2 MB of garbage so that the size passes the deflate ratio check. */
 static void test_size_as_int(void) {
-    /* the I4 fix fills this in */
+    char apk[1024];
+    path_of(apk, sizeof(apk), "i4-size-minus-one.apk");
+    size_t garbage_len = 4200000;
+    uint8_t *garbage = malloc(garbage_len);
+    for (size_t i = 0; i < garbage_len; ++i) {
+        garbage[i] = 0xff; /* BTYPE 3: invalid block, the decoder fails at once */
+    }
+    zip z = {0};
+    zip_add(&z, "assets/boz.s3e", 8, garbage, garbage_len, 0xffffffffu);
+    zip_write(&z, apk);
+    free(garbage);
+    expect_rejected("i4-size-minus-one", apk, MODE_ORIGINAL);
 }
 
 /* I5: a load command whose size wraps pos + cmdsize around 32 bits. */

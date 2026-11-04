@@ -11,6 +11,7 @@
 #include "../third_party/LzmaDec.h"
 #include "../third_party/stb_image.h"
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,6 +138,11 @@ static struct zip_entry *read_central_directory(FILE *f, int *count) {
         e->comp_size = rd32(h + 20);
         e->size = rd32(h + 24);
         e->local_offset = rd32(h + 42);
+        /* the deflate decoder counts in int, where a size of 0xffffffff would read as its
+         * own -1 failure: such an entry is left unreadable (an unknown method) */
+        if (e->method == 8 && (e->size > INT_MAX || e->comp_size > INT_MAX)) {
+            e->method = UINT32_MAX;
+        }
         size_t len = name_len < sizeof(e->name) - 1 ? name_len : sizeof(e->name) - 1;
         memcpy(e->name, h + 46, len);
         e->name[len] = 0;
@@ -190,7 +196,7 @@ static uint8_t *read_entry(FILE *f, const struct zip_entry *e) {
     int n = stbi_zlib_decode_noheader_buffer((char *)out, (int)e->size, (const char *)comp,
                                              (int)e->comp_size);
     free(comp);
-    if (n != (int)e->size) {
+    if (n < 0 || (uint32_t)n != e->size) {
         free(out);
         return NULL;
     }
