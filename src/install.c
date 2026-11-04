@@ -103,6 +103,11 @@ static struct zip_entry *read_central_directory(FILE *f, int *count) {
             break;
         }
         uint16_t name_len = rd16(h + 28), extra = rd16(h + 30), comment = rd16(h + 32);
+        if (name_len > cd_size - pos - 46) { /* the name runs past the directory */
+            free(cd);
+            free(entries);
+            return NULL;
+        }
         struct zip_entry *e = &entries[got];
         e->method = rd16(h + 10);
         e->comp_size = rd32(h + 20);

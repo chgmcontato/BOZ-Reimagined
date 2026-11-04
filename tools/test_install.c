@@ -532,7 +532,22 @@ static void test_stored_size_mismatch(void) {
 
 /* I2: a central directory entry whose name runs past the end of the directory. */
 static void test_cd_name_overflow(void) {
-    /* the I2 fix fills this in */
+    char apk[1024];
+    path_of(apk, sizeof(apk), "i2-cd-name.apk");
+    zip z = {0};
+    zip_add(&z, "assets/boz.s3e", 0, k_image_lzma, sizeof(k_image_lzma), sizeof(k_image_lzma));
+    zip_add(&z, "assets/x", 0, "x", 1, 1);
+    /* last entry: name length 250, but only 8 name bytes before the directory ends */
+    z.cd.p[z.cd.n - 8 - 46 + 28] = 250;
+    zip_write(&z, apk);
+    expect_rejected("i2-cd-name", apk, MODE_ORIGINAL);
+
+    /* the same with a 46-byte header and nothing after it */
+    path_of(apk, sizeof(apk), "i2-cd-header-only.apk");
+    zip_add(&z, "assets/boz.s3e", 0, k_image_lzma, sizeof(k_image_lzma), sizeof(k_image_lzma));
+    z.cd.n -= strlen("assets/boz.s3e");
+    zip_write(&z, apk);
+    expect_rejected("i2-cd-header-only", apk, MODE_ORIGINAL);
 }
 
 /* I7: an archive past 2 GiB (a sparse file: 2.5 GiB of hole, then the ZIP). On Windows, long is
