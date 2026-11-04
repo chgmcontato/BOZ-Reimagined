@@ -24,6 +24,17 @@
 #define mkdir_one(p) mkdir(p, 0777)
 #endif
 
+/* 64-bit file offsets: long is 32 bits on Windows, so fseek/ftell stop at 2 GiB there. */
+#ifdef _WIN32
+typedef __int64 file_off;
+#define file_seek _fseeki64
+#define file_tell _ftelli64
+#else
+typedef off_t file_off;
+#define file_seek fseeko
+#define file_tell ftello
+#endif
+
 struct zip_entry {
     char name[256];
     uint32_t method;
@@ -65,12 +76,17 @@ static int write_file(const char *path, const void *data, size_t size) {
 }
 
 static struct zip_entry *read_central_directory(FILE *f, int *count) {
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    long tail = size < 70000 ? size : 70000;
+    if (file_seek(f, 0, SEEK_END) != 0) {
+        return NULL;
+    }
+    file_off size = file_tell(f);
+    if (size < 0) {
+        return NULL;
+    }
+    long tail = size < 70000 ? (long)size : 70000;
     uint8_t *buf = malloc((size_t)tail);
-    fseek(f, size - tail, SEEK_SET);
-    if (fread(buf, 1, (size_t)tail, f) != (size_t)tail) {
+    if (file_seek(f, size - tail, SEEK_SET) != 0 ||
+        fread(buf, 1, (size_t)tail, f) != (size_t)tail) {
         free(buf);
         return NULL;
     }
@@ -89,8 +105,7 @@ static struct zip_entry *read_central_directory(FILE *f, int *count) {
     uint32_t cd_size = rd32(buf + eocd + 12), cd_offset = rd32(buf + eocd + 16);
     free(buf);
     uint8_t *cd = malloc(cd_size);
-    fseek(f, (long)cd_offset, SEEK_SET);
-    if (fread(cd, 1, cd_size, f) != cd_size) {
+    if (file_seek(f, (file_off)cd_offset, SEEK_SET) != 0 || fread(cd, 1, cd_size, f) != cd_size) {
         free(cd);
         return NULL;
     }
@@ -134,11 +149,14 @@ static uint8_t *read_entry(FILE *f, const struct zip_entry *e) {
         return NULL;
     }
     uint8_t local[30];
-    fseek(f, (long)e->local_offset, SEEK_SET);
-    if (fread(local, 1, 30, f) != 30 || rd32(local) != 0x04034b50u) {
+    if (file_seek(f, (file_off)e->local_offset, SEEK_SET) != 0 || fread(local, 1, 30, f) != 30 ||
+        rd32(local) != 0x04034b50u) {
         return NULL;
     }
-    fseek(f, (long)e->local_offset + 30 + rd16(local + 26) + rd16(local + 28), SEEK_SET);
+    if (file_seek(f, (file_off)e->local_offset + 30 + rd16(local + 26) + rd16(local + 28),
+                  SEEK_SET) != 0) {
+        return NULL;
+    }
     uint8_t *comp = malloc(e->comp_size ? e->comp_size : 1);
     if (fread(comp, 1, e->comp_size, f) != e->comp_size) {
         free(comp);

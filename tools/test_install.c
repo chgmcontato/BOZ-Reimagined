@@ -553,7 +553,23 @@ static void test_cd_name_overflow(void) {
 /* I7: an archive past 2 GiB (a sparse file: 2.5 GiB of hole, then the ZIP). On Windows, long is
  * 32 bits, so fseek/ftell could not reach it. Opt-in: CODBOZ_TEST_BIG=1. */
 static void test_big_file(void) {
-    /* the I7 fix fills this in */
+    const char *big = getenv("CODBOZ_TEST_BIG");
+    if (!big || strcmp(big, "1") != 0) {
+        printf("skipped: archive past 2 GiB (set CODBOZ_TEST_BIG=1)\n");
+        return;
+    }
+    char apk[1024], root[1024], error[256] = "";
+    path_of(apk, sizeof(apk), "big.apk");
+    zip z = {0};
+    z.base = 0xA0000000u;
+    apk_entries(&z);
+    zip_write(&z, apk);
+    new_root(root, sizeof(root), "root-big");
+    enum game_mode mode = MODE_COUNT;
+    CHECK(install_package(apk, root, &mode, error, sizeof(error)), "APK past 2 GiB: %s", error);
+    CHECK(file_equals(root, "original/assets/boz.s3e.unpacked", k_image, sizeof(k_image) - 1),
+          "boz.s3e.unpacked from an APK past 2 GiB");
+    remove(apk);
 }
 
 /* I3: sizes and offsets taken from the file must fit in the file before anything is allocated. */
