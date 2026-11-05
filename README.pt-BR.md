@@ -128,6 +128,9 @@ cd boz-reimagined
 make CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/caminho/do/boost/include
 ./run.sh
 
+# Testes, sem precisar dos arquivos do jogo (SANITIZE=1 liga ASan e UBSan)
+make test CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/caminho/do/boost/include
+
 # .exe de Windows, compilado a partir do Linux com MinGW-w64
 make win-deps
 make PLATFORM=windows all

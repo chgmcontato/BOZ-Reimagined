@@ -161,11 +161,85 @@ linux-dist: check-version all
 	cp $(NOTICES) $(BUILD_DIR)/dist/codboz-pc/
 	tar -C $(BUILD_DIR)/dist -czf $(BUILD_DIR)/codboz-pc-linux-x86_64.tar.gz codboz-pc
 
+# ---- Tests (Linux, no game data): `make test`; `make test SANITIZE=1` adds ASan and UBSan. ----
+# Most tests #include the source they check and replace some of its neighbours with fakes. The
+# ones that need the rest of the runtime link it as an archive with --allow-multiple-definition:
+# the test's own definitions come first and win. test_gles_shaders exits 77 (skipped) when no
+# OpenGL ES driver is available. test_guest_memory maps the guest space at 0x40000000-0x90000000,
+# where ASan keeps its shadow memory, so the sanitizer run leaves it out.
+comma := ,
+TEST_DIR := $(BUILD_DIR)/tests$(if $(SANITIZE),-san)
+TEST_SAN := $(if $(SANITIZE),-fsanitize=address$(comma)undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+TEST_CFLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -D_GNU_SOURCE -D_7ZIP_ST -Isrc \
+  $(SDL_CFLAGS) $(TEST_SAN)
+TEST_LIBS := $(SDL_LIBS) -lm -ldl -lpthread
+TEST_RUNTIME_OBJ := $(patsubst %.c,$(TEST_DIR)/obj/%.o,$(filter-out src/main.c,$(SRC))) \
+  $(TEST_DIR)/obj/src/emu_dynarmic.o
+TEST_WITH_RUNTIME := boz_zeroconf coop_pause menu_input menu_pointer_routing
+TEST_NAMES := pvrtc timer_cache updater gl_state gles_shaders player_name install_hash \
+  $(if $(SANITIZE),,guest_memory) $(TEST_WITH_RUNTIME)
+TEST_BINS := $(TEST_NAMES:%=$(TEST_DIR)/test_%)
+
+test: $(TEST_BINS)
+	@pass=0; skip=0; fail=0; \
+	for t in $(TEST_BINS); do \
+	  name=$$(basename $$t); \
+	  if ASAN_OPTIONS=$${ASAN_OPTIONS:-detect_leaks=0} $$t > $$t.log 2>&1; then \
+	    echo "PASS $$name"; pass=$$((pass + 1)); \
+	  elif [ $$? -eq 77 ]; then \
+	    echo "SKIP $$name ($$(tail -1 $$t.log))"; skip=$$((skip + 1)); \
+	  else \
+	    echo "FAIL $$name ($$t.log)"; tail -20 $$t.log; fail=$$((fail + 1)); \
+	  fi; \
+	done; \
+	echo "$$pass passed, $$skip skipped, $$fail failed"; [ $$fail -eq 0 ]
+
+$(TEST_DIR)/obj/src/%.o: src/%.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) -c $< -o $@
+$(TEST_DIR)/obj/tools/%.o: tools/%.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) -c $< -o $@
+$(TEST_DIR)/obj/third_party/%.o: third_party/%.c
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu11 -O1 -g -D_7ZIP_ST $(TEST_SAN) -c $< -o $@
+$(TEST_DIR)/obj/src/emu_dynarmic.o: src/emu_dynarmic.cpp src/*.h $(DYN_LIBS)
+	@mkdir -p $(dir $@)
+	$(CXX) -std=c++20 -O2 -g -D_GNU_SOURCE -Isrc -I$(DYN_SRC)/src $(TEST_SAN) -c $< -o $@
+$(TEST_DIR)/libruntime.a: $(TEST_RUNTIME_OBJ)
+	rm -f $@ && ar rcs $@ $^
+
+$(TEST_DIR)/test_pvrtc: tools/test_pvrtc.c src/pvrtc.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) $(filter %.c,$^) -o $@ -lm
+$(TEST_DIR)/test_gl_state: tools/test_gl_state.c src/gl_state.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) $(filter %.c,$^) -o $@
+$(TEST_DIR)/test_gles_shaders: tools/test_gles_shaders.c src/gles_shader.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) $(filter %.c,$^) -o $@ -ldl
+$(TEST_DIR)/test_timer_cache $(TEST_DIR)/test_player_name: $(TEST_DIR)/test_%: tools/test_%.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) $< -o $@ $(TEST_LIBS)
+$(TEST_DIR)/test_updater: tools/test_updater.c src/updater.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) $(filter %.c,$^) -o $@ $(TEST_LIBS)
+$(TEST_DIR)/test_install_hash: tools/test_install_hash.c src/updater.c third_party/LzmaDec.c src/*.h
+	@mkdir -p $(dir $@)
+	$(CC) $(TEST_CFLAGS) $(filter %.c,$^) -o $@ $(TEST_LIBS)
+$(TEST_DIR)/test_guest_memory: $(TEST_DIR)/obj/tools/test_guest_memory.o \
+  $(TEST_DIR)/obj/src/emu_dynarmic.o $(TEST_DIR)/obj/src/gheap.o $(DYN_LIBS)
+	$(CXX) -no-pie $(TEST_SAN) -o $@ $(filter %.o,$^) $(DYN_LIBS) -lpthread
+$(TEST_WITH_RUNTIME:%=$(TEST_DIR)/test_%): $(TEST_DIR)/test_%: $(TEST_DIR)/obj/tools/test_%.o \
+  $(TEST_DIR)/obj/tools/test_globals.o $(TEST_DIR)/libruntime.a $(DYN_LIBS)
+	$(CXX) -no-pie $(TEST_SAN) -o $@ $(filter %.o,$^) $(TEST_DIR)/libruntime.a $(DYN_LIBS) \
+	  $(TEST_LIBS) -Wl,--allow-multiple-definition
+
 FORCE:
-.PHONY: all clean win-deps win-dist linux-dist check-version FORCE
+.PHONY: all clean test win-deps win-dist linux-dist check-version FORCE
 
 # Only compiled files: $(BUILD_DIR)/game holds the installed game data and saves.
 clean:
-	rm -rf $(BUILD_DIR)/src $(BUILD_DIR)/third_party $(TARGET)
+	rm -rf $(BUILD_DIR)/src $(BUILD_DIR)/third_party $(BUILD_DIR)/tests $(BUILD_DIR)/tests-san $(TARGET)
 
 .PHONY: all clean

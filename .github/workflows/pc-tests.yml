@@ -1,0 +1,53 @@
+# PC runtime: builds the game and runs `make test` (no game data), then the same tests with
+# AddressSanitizer and UndefinedBehaviorSanitizer. Linux only; the Windows build is cross-compiled
+# from the same sources.
+name: pc-tests
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "tools/test_*.c"
+      - "third_party/**"
+      - "Makefile"
+      - ".github/workflows/pc-tests.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "tools/test_*.c"
+      - "third_party/**"
+      - "Makefile"
+      - ".github/workflows/pc-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LIBGL_ALWAYS_SOFTWARE: "1" # test_gles_shaders on Mesa's software driver
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libsdl2-dev libboost-dev \
+            libegl1 libgles2 libegl-mesa0 libgl1-mesa-dri
+
+      - name: Build the game
+        run: make -j"$(nproc)" CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/usr/include
+
+      - name: Tests
+        run: make test -j"$(nproc)" CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/usr/include
+
+      - name: Tests with ASan and UBSan
+        run: |
+          # ASan's shadow memory cannot be placed with the runner kernel's full mmap randomisation
+          sudo sysctl -w vm.mmap_rnd_bits=28
+          make test SANITIZE=1 -j"$(nproc)" CC=gcc CXX=g++ BOOST_INCLUDE_DIR=/usr/include

@@ -1,6 +1,7 @@
 /* Regression cases reproduced from the Android TV's LAN announcements. */
 #include <assert.h>
 #include "../src/zeroconf.c"
+int g_log_verbose;
 static uint8_t captured[2048];
 static size_t captured_size;
 int zeroconf_platform_send(int fd, const uint8_t *packet, size_t size,
