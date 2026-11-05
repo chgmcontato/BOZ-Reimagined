@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <time.h>
 
 enum { CONFIG_MAX_ENTRIES = 768 };
 
@@ -240,6 +241,27 @@ static bool parse_bool(const char *value) {
            strcasecmp(value, "yes") == 0 || strcasecmp(value, "on") == 0;
 }
 
+/* Every install used to be "Player" (and the game's own fallback, "Player-%d", draws the same
+ * number on every device). Two players with one name collide in a co-op room: boz-redux saw the
+ * room turn the second one away. So the default gets a random suffix once, kept in settings.txt;
+ * a name the player typed is never touched. */
+static const char k_legacy_default_name[] = "Player";
+
+static void assign_default_player_name(void) {
+    static const char alphabet[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; /* no 0/O or 1/I */
+    int local;
+    uint64_t x = monotonic_us() ^ ((uint64_t)time(NULL) << 20) ^ (uint64_t)(uintptr_t)&local;
+    char name[sizeof(g_player_name)] = "Player-";
+    for (int i = 0; i < 4; ++i) {
+        uint64_t z = (x += 0x9e3779b97f4a7c15ull); /* splitmix64 */
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+        z ^= z >> 31;
+        name[7 + i] = alphabet[z % (sizeof(alphabet) - 1)];
+    }
+    snprintf(g_player_name, sizeof(g_player_name), "%s", name);
+}
+
 static bool valid_player_name(const char *value) {
     size_t length = strlen(value);
     if (length == 0 || length >= sizeof(g_player_name)) {
@@ -336,6 +358,11 @@ void settings_load(void) {
     }
     if (g_opt.mouse_sensitivity <= 0.0f) {
         g_opt.mouse_sensitivity = 1.0f;
+    }
+    if (strcmp(g_player_name, k_legacy_default_name) == 0) {
+        assign_default_player_name();
+        settings_save();
+        log_info("player name: %s (default, picked once for this install)", g_player_name);
     }
 }
 
