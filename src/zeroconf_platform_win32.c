@@ -1,4 +1,6 @@
-/* Windows side of zeroconf_platform.h: Winsock socket, interfaces from GetAdaptersAddresses. */
+/* Windows side of zeroconf_platform.h: Winsock socket, interfaces from GetAdaptersAddresses.
+ * Shares code with boz-redux's file of the same name (MIT, Copyright (c) 2026 ZappaVinny and BOZ
+ * Redux contributors); see LICENSE-boz-redux. */
 #include "zc_compat.h"
 
 #include "zeroconf_platform.h"

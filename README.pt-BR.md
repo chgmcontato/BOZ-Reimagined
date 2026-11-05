@@ -275,7 +275,7 @@ de pause, T liga e desliga o timer. F11: tela cheia. F3: contador de FPS.
 | `src/`, `Makefile`, `run.sh` | Port para PC. `make` gera `build/codboz-pc`; `make clean` preserva `build/game` (dados instalados e saves) |
 | `mobile/` | Projeto para celulares Android; compartilha o runtime do PC em `src/` |
 | `tv/` | Projeto da Android TV: patchers, camada Java (`tv/java`), instalador, ferramentas de mapas, docs |
-| `third_party/` | Dynarmic (submódulo), cJSON, LZMA SDK, dr_mp3, stb (cada um com sua licença) |
+| `third_party/` | Dynarmic (submódulo), cJSON, LZMA SDK, dr_mp3, stb (licenças em [`THIRD-PARTY.md`](THIRD-PARTY.md)) |
 | `tools/` | testes, o probe do Dynarmic, geradores de código |
 | `docs/screenshots/` | imagens usadas neste README |
 
@@ -293,8 +293,16 @@ Relatos de bugs e ideias são bem-vindos:
 
 ---
 
+## 🙏 Créditos
+
+- A descoberta do co-op (mDNS e ZeroConf) e partes da camada de sockets, do loader e da configuração vêm do [cod-boz-port](https://github.com/Producdevity/cod-boz-port), de Producdevity, sob a licença MIT ([`LICENSE-cod-boz-port`](LICENSE-cod-boz-port)).
+- A parte de Windows do ZeroConf compartilha código com o [boz-redux](https://github.com/ZappaVinny/boz-redux), sob a licença MIT ([`LICENSE-boz-redux`](LICENSE-boz-redux)).
+- O código ARM do jogo roda no [Dynarmic](https://github.com/azahar-emu/dynarmic). Todos os componentes incluídos e suas licenças: [`THIRD-PARTY.md`](THIRD-PARTY.md).
+
+---
+
 ## 📄 Licença
 
-Código distribuído sob a [Licença MIT](LICENSE).
+Código distribuído sob a [Licença MIT](LICENSE). Código de terceiros mantém a própria licença, listada em [`THIRD-PARTY.md`](THIRD-PARTY.md).
 
 <sub>O BOZ Reimagined é um projeto de fã, sem ligação com a Activision ou a Treyarch e sem endosso delas. *Call of Duty* e *Black Ops* são marcas registradas da Activision Publishing, Inc. Este repositório não contém código nem assets do jogo.</sub>

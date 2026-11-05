@@ -1,3 +1,4 @@
+/* From cod-boz-port (MIT, Copyright (c) 2026 Producdevity); see LICENSE-cod-boz-port. */
 #include "zc_compat.h"
 
 #include "mdns_wire.h"

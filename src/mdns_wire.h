@@ -1,3 +1,4 @@
+/* From cod-boz-port (MIT, Copyright (c) 2026 Producdevity); see LICENSE-cod-boz-port. */
 #ifndef CODBOZ_MDNS_WIRE_H
 #define CODBOZ_MDNS_WIRE_H
 

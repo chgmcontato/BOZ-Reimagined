@@ -141,6 +141,10 @@ win-deps:
 # Release archives. Their names and layout are what the updater downloads and unpacks, so
 # keep them: codboz-pc-windows-x64.zip with codboz-pc.exe, codboz-pc-linux-x86_64.tar.gz
 # with codboz-pc/codboz-pc, plus SHA256SUMS.txt (sha256sum format) in the same release.
+# The license notices travel next to the executable; the updater only takes the executable
+# (it looks the entry up by name).
+NOTICES := LICENSE LICENSE-cod-boz-port LICENSE-boz-redux THIRD-PARTY.md
+
 check-version:
 	@case '$(VERSION)' in [0-9]*.[0-9]*) ;; *) echo "make: release builds need VERSION=x.y.z (the release tag without the v)" >&2; exit 1;; esac
 
@@ -148,11 +152,13 @@ check-version:
 win-dist: check-version all
 	mkdir -p $(BUILD_DIR)/dist
 	x86_64-w64-mingw32-strip -o $(BUILD_DIR)/dist/codboz-pc.exe $(TARGET)
-	cd $(BUILD_DIR)/dist && rm -f ../codboz-pc-windows-x64.zip && zip -q ../codboz-pc-windows-x64.zip codboz-pc.exe
+	cp $(NOTICES) $(BUILD_DIR)/dist/
+	cd $(BUILD_DIR)/dist && rm -f ../codboz-pc-windows-x64.zip && zip -q ../codboz-pc-windows-x64.zip codboz-pc.exe $(NOTICES)
 
 linux-dist: check-version all
 	rm -rf $(BUILD_DIR)/dist && mkdir -p $(BUILD_DIR)/dist/codboz-pc
 	strip -o $(BUILD_DIR)/dist/codboz-pc/codboz-pc $(TARGET)
+	cp $(NOTICES) $(BUILD_DIR)/dist/codboz-pc/
 	tar -C $(BUILD_DIR)/dist -czf $(BUILD_DIR)/codboz-pc-linux-x86_64.tar.gz codboz-pc
 
 FORCE:
