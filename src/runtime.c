@@ -100,16 +100,25 @@ IMPORT(s3eDeviceRequestQuit) {
     ret(0);
 }
 
-IMPORT(s3eDeviceExit) {
-    log_info("game requested exit");
+/* Every import runs inside a Dynarmic callback, with the JIT still executing. exit() would run
+ * the C++ static destructors and delete that Jit: the window close did exactly this and glibc
+ * aborted in malloc_consolidate about one exit in four (see input.c). Settings and saves are
+ * already on disk; flush the logs and leave without destructors. */
+static void leave(int code) {
     audio_shutdown();
     video_shutdown();
-    exit(0);
+    fflush(NULL);
+    _Exit(code);
+}
+
+IMPORT(s3eDeviceExit) {
+    log_info("game requested exit");
+    leave(0);
 }
 
 IMPORT(s3eDeviceAbort) {
     log_error("game aborted");
-    exit(1);
+    leave(1);
 }
 
 IMPORT(s3eDeviceRegister) {

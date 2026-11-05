@@ -605,7 +605,10 @@ extern "C" uint32_t guest_call(uint32_t fn, int argc, const uint32_t *argv) {
     g_depth--;
     if (!ok) {
         log_error("guest call 0x%08x failed", fn);
-        std::exit(1);
+        // Possibly inside another guest call's import: no static destructors while a Jit runs
+        // (see s3eDeviceExit in runtime.c).
+        std::fflush(nullptr);
+        std::_Exit(1);
     }
     uint32_t result = jit.Regs()[0];
     jit.Regs() = saved_regs;
