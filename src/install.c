@@ -7,6 +7,7 @@
  */
 #include "install.h"
 #include "log.h"
+#include "updater.h"
 
 #include "../third_party/LzmaDec.h"
 #include "../third_party/stb_image.h"
@@ -193,6 +194,9 @@ static int has_entry(const struct zip_entry *entries, int count, const char *nam
     return 0;
 }
 
+static void record_image_hash(const char *assets_dir, enum game_mode mode, const void *data,
+                              size_t size);
+
 int install_apk(const char *apk_path, const char *root, enum game_mode *mode_out, char *error,
                 size_t error_size) {
     FILE *f = fopen(apk_path, "rb");
@@ -237,6 +241,7 @@ int install_apk(const char *apk_path, const char *root, enum game_mode *mode_out
             return 0;
         }
         if (strcmp(e->name, "assets/boz.s3e") == 0) {
+            record_image_hash(dir, mode, data, e->size);
             size_t raw_len = 0;
             uint8_t *raw = lzma_alone_decode(data, e->size, &raw_len);
             if (!raw) {
@@ -262,6 +267,77 @@ int install_apk(const char *apk_path, const char *root, enum game_mode *mode_out
 
 const char *mode_dir_name(enum game_mode mode) {
     return mode == MODE_REIMAGINED ? "reimagined" : mode == MODE_IOS ? "ios" : "original";
+}
+
+/* -2: not looked up yet in this process. */
+static int g_image_reference[MODE_COUNT] = {-2, -2, -2};
+
+static int reference_from_hash(enum game_mode mode, const char *hex) {
+    if (mode != MODE_ORIGINAL) {
+        return -1;
+    }
+    return strcmp(hex, INSTALL_ORIGINAL_S3E_SHA256) == 0;
+}
+
+/* Fingerprints the APK's boz.s3e as it is stored there, the same bytes boz-redux-gamedef pins. */
+static void record_image_hash(const char *assets_dir, enum game_mode mode, const void *data,
+                              size_t size) {
+    char hex[65], path[1200];
+    updater_sha256_hex(data, size, hex);
+    snprintf(path, sizeof(path), "%s/boz.s3e.sha256", assets_dir);
+    char line[67];
+    snprintf(line, sizeof(line), "%s\n", hex);
+    write_file(path, line, strlen(line));
+    g_image_reference[mode] = reference_from_hash(mode, hex);
+    log_info("boz.s3e sha256 %s%s", hex,
+             g_image_reference[mode] == 1   ? " (the Android 1.0.11 reference build)"
+             : g_image_reference[mode] == 0 ? " (not the Android 1.0.11 reference build)"
+                                            : "");
+}
+
+int install_image_reference(const char *root, enum game_mode mode) {
+    if ((int)mode < 0 || (int)mode >= MODE_COUNT) {
+        return -1;
+    }
+    if (g_image_reference[mode] != -2) {
+        return g_image_reference[mode];
+    }
+    g_image_reference[mode] = -1;
+    if (mode != MODE_ORIGINAL) {
+        return -1;
+    }
+    char dir[1100], path[1200], hex[65] = "";
+    snprintf(dir, sizeof(dir), "%s/%s/assets", root, mode_dir_name(mode));
+    snprintf(path, sizeof(path), "%s/boz.s3e.sha256", dir);
+    FILE *f = fopen(path, "rb");
+    if (f) {
+        if (fread(hex, 1, 64, f) != 64) {
+            hex[0] = 0;
+        }
+        hex[64] = 0;
+        fclose(f);
+    }
+    if (hex[0]) {
+        g_image_reference[mode] = reference_from_hash(mode, hex);
+        return g_image_reference[mode];
+    }
+    /* Installed by an older version: hash the stored boz.s3e once and record it. */
+    snprintf(path, sizeof(path), "%s/boz.s3e", dir);
+    f = fopen(path, "rb");
+    if (!f) {
+        return -1;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *data = size > 0 ? malloc((size_t)size) : NULL;
+    bool ok = data && fread(data, 1, (size_t)size, f) == (size_t)size;
+    fclose(f);
+    if (ok) {
+        record_image_hash(dir, mode, data, (size_t)size);
+    }
+    free(data);
+    return g_image_reference[mode];
 }
 
 int install_present(const char *root, enum game_mode mode) {

@@ -324,6 +324,12 @@ int main(int argc, char **argv) {
     patch_frame_cap(&image);
     log_info("boz.s3e mapped at 0x%08x, entry 0x%08x, %zu imports", image.base, image.entry,
              image.symbol_count);
+    if (mode == MODE_ORIGINAL) {
+        int reference = install_image_reference(g_data_root, mode);
+        log_info("boz.s3e: %s", reference == 1   ? "the Android 1.0.11 reference build"
+                                : reference == 0 ? "not the Android 1.0.11 reference build"
+                                                 : "build unknown (no installed copy to check)");
+    }
 
     int rc = emu_run(image.entry);
     log_info("game returned %d", rc);

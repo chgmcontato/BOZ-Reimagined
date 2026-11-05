@@ -440,9 +440,12 @@ static void install_from_apk(void) {
     if (install_package(apk, g_data_root, &mode, error, sizeof(error))) {
         g_mode = mode;
         save_cfg();
+        bool other_build = mode == MODE_ORIGINAL && install_image_reference(g_data_root, mode) == 0;
         message(false, mode == MODE_REIMAGINED ? TR("Modo Reimagined instalado.", "Reimagined mode installed.")
                        : mode == MODE_IOS      ? TR("Modo iOS instalado (versão 1.3.5).", "iOS mode installed (version 1.3.5).")
-                                               : TR("Modo Original instalado.", "Original mode installed."));
+                       : other_build ? TR("Modo Original instalado. O boz.s3e deste APK não é o da 1.0.11 de referência.",
+                                          "Original mode installed. This APK's boz.s3e is not the 1.0.11 reference build.")
+                                     : TR("Modo Original instalado.", "Original mode installed."));
     } else {
         message(true, error);
     }
@@ -521,10 +524,14 @@ static void version_card(enum game_mode mode, float x, float y, float w, float h
     }
     icon(installed ? ICON_CHECK : ICON_ALERT, x + 14, y + 122, 15, installed ? C_OK : C_GOLD);
     label(installed ? TR("Instalada", "Installed") : TR("Não instalada", "Not installed"), x + 36, y + 135, 13, installed ? C_OK : C_GOLD, UI_LEFT);
+    /* Original: whether its boz.s3e is the 1.0.11 build the known addresses come from */
+    int reference = mode == MODE_ORIGINAL && installed ? install_image_reference(g_data_root, mode) : -1;
     label(mode == MODE_REIMAGINED ? TR("Arquivo: BOZ-TV.apk", "File: BOZ-TV.apk")
           : mode == MODE_IOS      ? TR("Arquivo: IPA 1.3.5", "File: IPA 1.3.5")
+          : reference == 1        ? TR("APK 1.0.11  ·  conferido", "APK 1.0.11  ·  verified")
+          : reference == 0        ? TR("APK  ·  boz.s3e de outra versão", "APK  ·  other boz.s3e build")
                                   : TR("Arquivo: APK 1.0.11", "File: APK 1.0.11"),
-          x + 14, y + 158, 12, C_SAND, UI_LEFT);
+          x + 14, y + 158, 12, reference == 0 ? C_GOLD : C_SAND, UI_LEFT);
     label(mode_coop(mode), x + 14, y + 176, 12, C_DIM, UI_LEFT);
     float bx = x + 12, bw = w - 24;
     if (button(bx, y + h - 92, bw, 36, active ? TR("Em uso", "In use") : TR("Usar esta", "Use this"), !active && installed, !active && installed)) {

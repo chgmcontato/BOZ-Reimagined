@@ -43,7 +43,7 @@ void updater_restart(void);
 
 /* <0, 0, >0 like strcmp, for "v1.2.3"-style versions (a leading v is optional). */
 int updater_compare_versions(const char *a, const char *b);
-void updater_sha256_hex(const void *data, size_t size, char hex[65]);
+void updater_sha256_hex(const void *data, size_t size, char hex[65]); /* also used by install.c */
 /* The executable inside a release archive (zip on Windows, tar.gz on Linux), malloc'd. */
 uint8_t *updater_extract(const uint8_t *archive, size_t size, bool zip, const char *name,
                          size_t *out_size);
